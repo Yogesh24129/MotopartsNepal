@@ -109,10 +109,10 @@ provider integration.
 
 Payment retries and duplicate callbacks do not double-charge the local ledger or
 deduct stock twice. A confirmed payment stays paid if stock sells out before the
-callback; its receipt requests fulfillment assistance. No automated refunds or
-administrative fulfillment interface is implemented. Cash-on-delivery collection and
-fulfillment must currently be handled operationally; there is no customer-facing
-control to mark an order paid.
+callback; its receipt requests fulfillment assistance. Administrators can reserve
+stock after review, manage dispatch and delivery, and record COD collection after
+delivery. Cancelling an unpaid order releases its reserved stock once. Paid orders
+require a refund through the payment provider; automated refunds are not implemented.
 
 ## Accounts, wallets and notifications
 
@@ -139,7 +139,8 @@ The footer provides measurement consent and a **Session analytics** link to
 withdrawal stops collection and clears this session's local history. The dashboard
 shows this browser session's last 30 days of impressions, clicks, paid conversions,
 order value, click-through rate and checkout conversion rate. It is not a global
-sales/admin dashboard or an external ad-delivery report.
+sales dashboard or an external ad-delivery report. The protected admin overview
+at /admin provides store-wide database counts and measurement summaries.
 
 Product/promotion impressions require at least 50% visibility and count once per page.
 Repeated clicks can count separately. Paid purchases come from confirmed order
@@ -217,7 +218,8 @@ to be running.
 For public deployment, use external MongoDB, `NODE_ENV=production`, a strong
 `SESSION_SECRET`, live payment configuration and a public HTTPS `APP_BASE_URL`.
 Enable `TRUST_PROXY=1` only behind one trusted reverse proxy. Production rejects the
-managed local database and the card test route. The app has no admin dashboard yet.
+managed local database and the card test route. Administrator roles are granted
+through the database operator command, never public registration.
 
 ## Troubleshooting and verification
 
@@ -241,3 +243,71 @@ cover transactions, ownership, CSRF, analytics, SEO, recommendations, setup,
 persistent restarts, cash-on-delivery checkout and HTTPS configuration. GitHub Actions
 runs the setup command and regression suite on Windows and Linux. The Windows job
 also launches the app through start.cmd and verifies the homepage responds.
+
+## Administrator dashboard (Windows)
+
+1. Run `setup.cmd` once, then `start.cmd`. Setup preserves an existing external
+   MongoDB configuration; fresh installations use the managed local database.
+2. Register your own account at `http://localhost:3000/auth/register`.
+3. Keep the website terminal running. Open a second PowerShell window in the repository:
+   ```powershell
+   npm run admin:grant -- your-registered-email@example.com
+   ```
+4. Log in and open [the admin dashboard](http://localhost:3000/admin). If already
+   signed in, refresh the page. For local HTTPS, use `https://localhost:3443/admin`
+   after following the Windows HTTPS instructions above.
+5. To remove access:
+   ```powershell
+   npm run admin:grant -- your-registered-email@example.com --revoke
+   ```
+
+The overview shows registered users, active products, total orders, new customers,
+paid order value, average order value, payment environment breakdown, daily sales,
+best-selling products, low stock, and consent-based traffic/impression/click counts.
+Sandbox totals are identified separately. Older orders without an environment
+are reported as unknown. Traffic documents expire after 30 days, even when selecting
+a longer sales period. GA4 bounce and engagement metrics remain in your GA4 property.
+
+Products can be added, edited, archived and restored. Stock and price edits reject
+outdated forms to avoid overwriting inventory changed by checkout. Use the image
+paths already stored in MongoDB, or public HTTPS image URLs. Archived products keep
+their order history and disappear from shopping and recommendations.
+
+Orders support partner assignment, dispatch, delivery, paid stock-review resolution,
+unpaid cancellation with stock release, and COD collection after delivery. Online
+payment orders cannot dispatch before payment confirmation and inventory reservation.
+The activity log records administrator changes. Customers cannot access these routes
+or grant administrator roles. There is no default administrator password.
+
+### Shipping partner email and WhatsApp
+
+Add a partner in **Admin → Shipping partners**, including email or an international
+WhatsApp number (for example `+9779800000000`). Record the partner's WhatsApp opt-in,
+then assign that partner to an order. Open the order, choose a channel, preview the
+delivery manifest and recipient, and press **Send**.
+
+Configure the local `.env`, then restart the app:
+
+```dotenv
+GMAIL_USER=your-sending-account@gmail.com
+GMAIL_APP_PASSWORD=your-google-app-password
+TWILIO_ACCOUNT_SID=your-twilio-account-sid
+TWILIO_AUTH_TOKEN=your-twilio-auth-token
+TWILIO_WHATSAPP_FROM=whatsapp:+your-approved-sender
+SHIPPING_WHATSAPP_CONTENT_SID=your-approved-shipping-template-sid
+```
+
+Email requires both Gmail values. WhatsApp requires all four Twilio values and a
+shipping template with `{{1}}` for the shipment subject and `{{2}}` for the delivery
+manifest. Follow [Twilio's official template notification instructions](https://www.twilio.com/docs/whatsapp/tutorial/send-whatsapp-notification-messages-templates)
+to provision the sender and approved template. For Twilio sandbox testing, partners
+must join your sandbox. Use the separate shipping template; the customer confirmation
+template is configured independently by `TWILIO_CONTENT_SID`.
+
+A notice is claimed once before provider submission. Duplicate clicks cannot resend
+it. If the order or partner changes after preview, create a fresh preview. **Accepted**
+means the provider accepted the request, not that delivery was confirmed.
+**Unconfirmed** or **Sending** requires checking provider records before creating
+another notice; ambiguous failures are not retried automatically. Notice history
+and customer delivery details are restricted to administrators. Credentials are
+never committed to GitHub.

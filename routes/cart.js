@@ -13,7 +13,7 @@ router.get("/", (req, res) => {
 router.post("/add/:productId", async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.productId);
-    if (!product) {
+    if (!product || product.active === false) {
       req.flash("error", "Product not found.");
       return res.redirect("back");
     }
@@ -39,7 +39,7 @@ router.post("/add/:productId", async (req, res, next) => {
 router.post("/update/:productId", async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.productId);
-    if (!product) {
+    if (!product || product.active === false) {
       cartService.removeItem(req, req.params.productId);
     } else {
       cartService.updateItem(req, req.params.productId, req.body.quantity, product.stock);

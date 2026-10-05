@@ -47,6 +47,7 @@
 
       <nav class="nav-links">
         <% if (currentUser) { %>
+          <% if (currentUser.role === "admin") { %><a href="/admin" class="btn btn-outline btn-sm">Admin</a><% } %>
           <span style="font-weight:600;">Hi, <%= currentUser.name %></span>
           <form action="/auth/logout" method="POST" style="display:inline;">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>">

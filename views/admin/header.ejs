@@ -1,0 +1,6 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><title><%= title %> | MotoParts Nepal</title><link rel="stylesheet" href="/css/admin.css"></head><body>
+<aside class="sidebar"><a class="brand" href="/admin">MOTO<span>PARTS</span><small>STORE MANAGEMENT</small></a><nav>
+<% [["overview","Overview","/admin"],["orders","Orders","/admin/orders"],["products","Products","/admin/products"],["users","Customers","/admin/users"],["partners","Shipping partners","/admin/partners"],["activity","Activity log","/admin/activity"]].forEach(([key,label,url])=> { %><a href="<%= url %>" class="<%= adminSection === key ? 'selected' : '' %>"><%= label %></a><% }) %></nav>
+<div class="sidebar-bottom"><a href="/">View storefront ↗</a><p><%= currentUser.name %></p><form action="/auth/logout" method="POST"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="secondary">Log out</button></form></div></aside>
+<main class="workspace"><header class="topbar"><span>WORKSPACE / <%= adminSection.toUpperCase() %></span><span>MotoParts Nepal</span></header>
+<% success.forEach(msg => { %><p class="notice success"><%= msg %></p><% }); error.forEach(msg => { %><p class="notice"><%= msg %></p><% }); %>

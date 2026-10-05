@@ -63,14 +63,14 @@ router.get("/esewa/failure/:orderId", loadOrder, paymentMethod("esewa"), (req, r
 
 router.get("/esewa/:orderId", loadOrder, paymentMethod("esewa"), async (req, res, next) => {
   try {
-    if (req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
+    if (req.order.shippingStatus === "cancelled" || req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
     esewa.requireConfiguration();
     if (req.order.esewaTransactionUuids.length >= 50) throw httpError(409, "Too many payment attempts. Please contact support.");
     // Preserve every signed attempt so delayed callbacks can still be reconciled.
     const uuid = `${req.order._id}-${crypto.randomUUID()}`;
     const attempts = req.order.esewaTransactionUuid ? [uuid, req.order.esewaTransactionUuid] : [uuid];
     const order = await Order.findOneAndUpdate(
-      { _id: req.order._id, paymentStatus: { $ne: "paid" } },
+      { _id: req.order._id, shippingStatus: { $ne: "cancelled" }, paymentStatus: { $ne: "paid" } },
       { $set: { esewaTransactionUuid: uuid }, $addToSet: { esewaTransactionUuids: { $each: attempts } } }, { new: true }
     );
     if (!order) return res.redirect(`/payment/status/${req.order._id}`);
@@ -81,13 +81,13 @@ router.get("/esewa/:orderId", loadOrder, paymentMethod("esewa"), async (req, res
 });
 
 router.get("/card/:orderId", requireCardTest, loadOrder, paymentMethod("card"), (req, res) => {
-  if (req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
+  if (req.order.shippingStatus === "cancelled" || req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
   res.render("card-payment", { title: "Card Payment", order: req.order });
 });
 
 router.post("/card/:orderId/process", requireCardTest, loadOrder, paymentMethod("card"), async (req, res, next) => {
   try {
-    if (req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
+    if (req.order.shippingStatus === "cancelled" || req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
     const { cardName, cardNumber, expiry, cvv } = req.body;
     const digitsOnly = typeof cardNumber === "string" ? cardNumber.replace(/\s+/g, "") : "";
     const match = typeof expiry === "string" && expiry.match(/^(0[1-9]|1[0-2])\/(\d{2})$/);

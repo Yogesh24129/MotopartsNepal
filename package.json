@@ -10,7 +10,8 @@
     "seed:wallets": "node seed/seedWallets.js",
     "test": "node --test --test-concurrency=1",
     "setup": "node scripts/setup.js",
-    "https:setup": "node scripts/https-setup.js"
+    "https:setup": "node scripts/https-setup.js",
+    "admin:grant": "node scripts/admin-grant.js"
   },
   "keywords": [
     "ecommerce",

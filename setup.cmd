@@ -10,5 +10,5 @@ node scripts\check-node.js
 if errorlevel 1 exit /b 1
 call npm ci
 if errorlevel 1 exit /b 1
-call npm run setup -- --local
+call npm run setup
 exit /b %errorlevel%

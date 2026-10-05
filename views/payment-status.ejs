@@ -1,7 +1,10 @@
 <%- include('partials/header') %>
 <main class="container">
   <div class="status-shell">
-    <% if (order.paymentStatus === 'paid') { %>
+    <% if (order.shippingStatus === 'cancelled') { %>
+      <h1>Order cancelled</h1><p>This order will not be shipped.</p>
+      <% if (order.paymentStatus === "paid") { %><p>Your payment was confirmed after cancellation. Please contact the store to arrange a refund.</p><% } %>
+    <% } else if (order.paymentStatus === 'paid') { %>
       <div class="status-icon ok">&#10003;</div>
       <h1>Payment successful</h1>
       <% if (order.fulfillmentStatus === 'stock_review') { %>
@@ -22,9 +25,10 @@
     <div class="receipt">
       <div class="row"><span>Order ID</span><span><%= order._id %></span></div>
       <div class="row"><span>Payment method</span><span><%= order.paymentMethod === 'esewa' ? 'eSewa' : order.paymentMethod === 'cod' ? 'Cash on delivery' : 'Card' %></span></div>
-      <div class="row"><span>Payment status</span><span><%= order.paymentStatus === 'paid' ? 'Paid' : order.paymentMethod === 'cod' ? 'Due on delivery' : order.paymentStatus === 'pending' ? 'Awaiting confirmation' : 'Failed' %></span></div>
+      <div class="row"><span>Payment status</span><span><%= order.paymentStatus === 'paid' ? 'Paid' : order.shippingStatus === 'cancelled' ? 'Not collected' : order.paymentMethod === 'cod' ? 'Due on delivery' : order.paymentStatus === 'pending' ? 'Awaiting confirmation' : 'Failed' %></span></div>
       <% if (order.transactionId) { %><div class="row"><span>Transaction ID</span><span><%= order.transactionId %></span></div><% } %>
       <% if (order.cardLast4) { %><div class="row"><span>Card</span><span>**** **** **** <%= order.cardLast4 %></span></div><% } %>
+      <div class="row"><span>Shipment</span><span><%= order.shippingStatus || "processing" %></span></div>
       <div class="row"><span>Delivery to</span><span><%= order.customer.address %>, <%= order.customer.city %></span></div>
       <div class="row"><span>Total</span><span>Rs. <%= order.total.toLocaleString('en-IN') %></span></div>
     </div>

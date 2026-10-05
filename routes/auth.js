@@ -50,7 +50,7 @@ router.post("/register", async (req, res, next) => {
 
     await establishLogin(req, user);
     req.flash("success", `Welcome, ${user.name}!`);
-    res.redirect("/");
+    res.redirect(user.role === "admin" ? "/admin" : "/");
   } catch (err) {
     next(err);
   }
@@ -83,7 +83,7 @@ router.post("/login", async (req, res, next) => {
 
     await establishLogin(req, user);
     req.flash("success", `Welcome back, ${user.name}!`);
-    res.redirect("/");
+    res.redirect(user.role === "admin" ? "/admin" : "/");
   } catch (err) {
     next(err);
   }

@@ -59,6 +59,7 @@ function createApp(options = {}) {
   app.use("/wallet", require("./routes/wallet"));
   app.use("/auth", require("./routes/auth"));
   app.use("/notifications", require("./routes/notifications"));
+  app.use("/admin", require("./routes/admin"));
   app.use("/marketing", require("./routes/marketing"));
   app.use((req, res) => res.status(404).render("404", { title: "Page not found" }));
   app.use((error, req, res, next) => {

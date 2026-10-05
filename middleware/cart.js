@@ -97,7 +97,7 @@ async function exposeCurrentUser(req, res, next) {
   if (req.session.userId) {
     const User = require("../models/User");
     try {
-      res.locals.currentUser = await User.findById(req.session.userId).select("name email");
+      res.locals.currentUser = await User.findById(req.session.userId).select("name email role");
     } catch (error) {
       return next(error);
     }

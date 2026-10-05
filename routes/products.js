@@ -8,7 +8,7 @@ const { catalogSEO, productSEO, gaPage } = require("../services/seo");
 router.get("/", async (req, res, next) => {
   try {
     const { category, q } = req.query;
-    const filter = {};
+    const filter = { active: { $ne: false } };
     if ((category && (typeof category !== "string" || category.length > 50)) ||
         (q && (typeof q !== "string" || q.length > 100))) return res.status(400).render("error", {
       title: "Invalid search", message: "Enter a shorter search or category.",
@@ -17,7 +17,7 @@ router.get("/", async (req, res, next) => {
     if (q) filter.name = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
 
     const products = await Product.find(filter).sort({ createdAt: -1 });
-    const categories = await Product.distinct("category");
+    const categories = await Product.distinct("category", { active: { $ne: false } });
 
     const seo = catalogSEO(category, Boolean(q), categories.includes(category));
     res.set("X-Robots-Tag", seo.robots);
@@ -40,7 +40,7 @@ router.get("/", async (req, res, next) => {
 // Single product detail page
 router.get("/product/:slug", async (req, res, next) => {
   try {
-    const product = await Product.findOne({ slug: req.params.slug });
+    const product = await Product.findOne({ slug: req.params.slug, active: { $ne: false } });
     if (!product) {
       return res.status(404).render("404", { title: "Part not found" });
     }

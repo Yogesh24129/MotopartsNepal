@@ -10,6 +10,7 @@ async function finalizeOrder(orderId, status, transactionId, options = {}) {
   return mongoose.connection.transaction(async (session) => {
     const order = await Order.findById(orderId).session(session);
     if (!order) throw httpError(404, "Order not found.");
+    if (order.shippingStatus === "cancelled" && order.paymentMethod !== "esewa") throw httpError(409, "This order was cancelled.");
     if (options.method && order.paymentMethod !== options.method) throw httpError(400, "Payment method mismatch.");
     if (options.uuid && order.esewaTransactionUuid !== options.uuid && !order.esewaTransactionUuids.includes(options.uuid)) throw httpError(400, "Payment attempt no longer matches this order.");
     if (order.paymentStatus === "paid") return { order, changed: false };
@@ -24,8 +25,8 @@ async function finalizeOrder(orderId, status, transactionId, options = {}) {
         stock.has(String(item.product)) && stock.get(String(item.product)) >= item.quantity);
       // A confirmed external payment must stay paid even if stock sold out while
       // the buyer was at the gateway. Flag it for fulfillment/refund review.
-      order.fulfillmentStatus = order.paymentMethod === "cod" && order.fulfillmentStatus === "allocated" ? "allocated" : available ? "allocated" : "stock_review";
-      if (available && order.paymentMethod !== "cod") {
+      order.fulfillmentStatus = order.shippingStatus === "cancelled" ? "stock_review" : order.paymentMethod === "cod" && order.fulfillmentStatus === "allocated" ? "allocated" : available ? "allocated" : "stock_review";
+      if (available && order.paymentMethod !== "cod" && order.shippingStatus !== "cancelled") {
         for (const item of order.items) {
           const result = await Product.updateOne(
             { _id: item.product, stock: { $gte: item.quantity } },

@@ -5,7 +5,7 @@ const { siteConfig, absolute, xml } = require("../services/seo");
 
 router.get("/robots.txt", (req, res) => {
   const { indexing } = siteConfig();
-  const rules = indexing ? ["Allow: /", "Disallow: /auth/", "Disallow: /wallet", "Disallow: /cart", "Disallow: /checkout",
+  const rules = indexing ? ["Allow: /", "Disallow: /admin", "Disallow: /auth/", "Disallow: /wallet", "Disallow: /cart", "Disallow: /checkout",
     "Disallow: /payment/", "Disallow: /notifications", "Disallow: /marketing/", "Disallow: /*?*q="] : ["Disallow: /"];
   res.type("text/plain").send(["User-agent: *", ...rules, `Sitemap: ${absolute("/sitemap.xml")}`, ""].join("\n"));
 });
@@ -13,7 +13,7 @@ router.get("/robots.txt", (req, res) => {
 router.get("/sitemap.xml", async (req, res, next) => {
   try {
     const { indexing } = siteConfig();
-    const products = indexing ? await Product.find().select("slug category updatedAt").sort({ slug: 1 }).lean() : [];
+    const products = indexing ? await Product.find({ active: { $ne: false } }).select("slug category updatedAt").sort({ slug: 1 }).lean() : [];
     const entries = indexing ? [`<url><loc>${xml(absolute("/"))}</loc></url>`] : [];
     const categories = [...new Set(products.map((product) => product.category))].sort();
     for (const category of categories) entries.push(`<url><loc>${xml(absolute(`/?category=${encodeURIComponent(category)}`))}</loc></url>`);

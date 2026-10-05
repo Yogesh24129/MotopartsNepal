@@ -33,6 +33,11 @@ const Order = require("../models/Order");
 const Wallet = require("../models/Wallet");
 const Transaction = require("../models/Transaction");
 const MarketingEvent = require("../models/MarketingEvent");
+const ShippingPartner = require("../models/ShippingPartner");
+const ShippingNotice = require("../models/ShippingNotice");
+const AdminAudit = require("../models/AdminAudit");
+const adminService = require("../services/admin");
+const shippingDelivery = require("../services/shipping-notices");
 const { generateOrderHash } = require("../utils/hash");
 const { finalizeOrder } = require("../services/payments");
 const { transfer, completeTopup, getOrCreateWallet } = require("../services/wallets");
@@ -769,4 +774,159 @@ test("live mode blocks simulated card processing and renders normal store wordin
     assert.ok(!/Lab\s+\d|College|local demo|dummy card/i.test(home.text + dashboard.text));
     assert.match(home.text, /Session analytics/);
   } finally { process.env.PAYMENT_MODE = mode; }
+});
+
+
+async function administrator() {
+  const result = await account("admin@example.com");
+  await User.updateOne({ _id: result.user._id }, { $set: { role: "admin" } });
+  return result;
+}
+test("admin access uses the current database role and never accepts public role escalation", async () => {
+  await request(app).get("/admin").expect(302);
+  const { agent, user } = await account();
+  await agent.get("/admin").expect(403);
+  await User.updateOne({ _id: user._id }, { $set: { role: "admin" } });
+  const page = await agent.get("/admin").expect(200);
+  assert.match(page.text, /STORE PERFORMANCE/);
+  assert.match(page.headers["cache-control"], /no-store/);
+  assert.match(page.text, /noindex,nofollow/);
+  await User.updateOne({ _id: user._id }, { $set: { role: "customer" } });
+  await agent.get("/admin/products").expect(403);
+  const other = request.agent(app), registration = await other.get("/auth/register");
+  await other.post("/auth/register").type("form").send({ _csrf: token(registration), name: "Other", email: "other@example.com", password: "Testing123!", confirmPassword: "Testing123!", role: "admin" }).expect(302);
+  assert.equal((await User.findOne({ email: "other@example.com" })).role, "customer");
+});
+test("admin pages render and protect product edits against stale stock and archive from shopping", async () => {
+  const { agent } = await administrator(), part = await product();
+  for (const path of ["/admin", "/admin/products", "/admin/products/new", "/admin/users", "/admin/orders", "/admin/partners", "/admin/activity"]) await agent.get(path).expect(200);
+  const page = await agent.get("/admin/products/" + part._id).expect(200);
+  const fields = { _csrf: token(page), version: part.updatedAt.toISOString(), name: "Updated brake", slug: "brake-pad", brand: "Test", category: "Brakes", price: "125", stock: "8", image: "/images/products/brakes.jpg", description: "Replacement", compatibleModels: "TVS Sport, Apache" };
+  await Product.updateOne({ _id: part._id }, { $inc: { stock: -1 } });
+  await agent.post("/admin/products/" + part._id).type("form").send(fields).expect(409);
+  assert.equal((await Product.findById(part._id)).stock, 9);
+  fields.version = (await Product.findById(part._id)).updatedAt.toISOString();
+  await agent.post("/admin/products/" + part._id).type("form").send(fields).expect(302);
+  const updated = await Product.findById(part._id);
+  assert.equal(updated.price, 125);
+  await agent.post("/admin/products/" + part._id + "/archive").type("form").send({ _csrf: token(page), version: updated.updatedAt.toISOString(), active: "false" }).expect(302);
+  await request(app).get("/product/" + part.slug).expect(404);
+  const home = await request(app).get("/");
+  assert.doesNotMatch(home.text, /Updated brake/);
+  assert.ok(await AdminAudit.countDocuments({ action: "product_updated" }));
+});
+test("admin validation rejects unsafe images, invalid stock and unsupported category", () => {
+  const fields = { name:"Part", slug:"part", brand:"Test", category:"Brakes", price:"100", stock:"2", image:"/images/products/a.jpg" };
+  assert.equal(adminService.productFields(fields).stock, 2);
+  for (const invalid of [{ image:"javascript:alert(1)" }, { stock:"1.5" }, { category:"Unknown" }, { slug:"../admin" }]) assert.throws(() => adminService.productFields({ ...fields, ...invalid }));
+});
+test("COD cancellation restores inventory once and prevents subsequent payment", async () => {
+  const { agent, user } = await administrator(), part = await product(8), order = await orderFor(user, part, "cod");
+  order.fulfillmentStatus = "allocated"; await order.save();
+  const page = await agent.get("/admin/orders/" + order._id).expect(200);
+  const body = { _csrf: token(page), action:"cancel", version:order.updatedAt.toISOString() };
+  await agent.post("/admin/orders/" + order._id).type("form").send(body).expect(302);
+  assert.equal((await Product.findById(part._id)).stock,10);
+  await agent.post("/admin/orders/" + order._id).type("form").send(body).expect(409);
+  assert.equal((await Product.findById(part._id)).stock,10);
+  await assert.rejects(finalizeOrder(order._id, "paid", "late"), /cancelled/);
+});
+test("dispatch validates reservation and COD collection preserves reserved stock", async () => {
+  const { agent, user } = await administrator(), part = await product(8), order = await orderFor(user, part, "cod");
+  const partner = await ShippingPartner.create({ name:"Courier", email:"courier@example.com" });
+  await assert.rejects(adminService.updateOrder(order._id, { version:order.updatedAt.toISOString(), partner:String(partner._id), status:"dispatched" }, user._id), /reserved stock/);
+  order.fulfillmentStatus="allocated"; await order.save();
+  await adminService.updateOrder(order._id, { version:order.updatedAt.toISOString(), partner:String(partner._id), status:"dispatched" }, user._id);
+  let current = await Order.findById(order._id);
+  await assert.rejects(adminService.updateOrder(order._id, { version:current.updatedAt.toISOString(), action:"paid" }, user._id), /after delivery/);
+  await adminService.updateOrder(order._id, { version:current.updatedAt.toISOString(), status:"delivered" }, user._id);
+  current = await Order.findById(order._id);
+  await adminService.updateOrder(order._id, { version:current.updatedAt.toISOString(), action:"paid" }, user._id);
+  assert.equal((await Order.findById(order._id)).paymentStatus,"paid");
+  assert.equal((await Product.findById(part._id)).stock,8);
+});
+test("admin metrics aggregate all customers and separate sandbox payment value", async () => {
+  const { user } = await administrator(), part = await product(), order = await orderFor(user, part);
+  order.paymentStatus="paid"; order.paidAt=new Date(); order.paymentEnvironment="sandbox"; await order.save();
+  await account("second@example.com");
+  await MarketingEvent.create({ visitor:"consenting-one", eventId:"admin-metric-one", type:"PageView", page:"catalog" });
+  const stats=await adminService.metrics(30);
+  assert.equal(stats.users,2); assert.equal(stats.products,1); assert.equal(stats.visitors,1); assert.equal(stats.events.PageView,1);
+  assert.equal(stats.paid[0]._id,"sandbox"); assert.equal(stats.paid[0].total,order.total); assert.equal(stats.top[0].quantity,2);
+});
+async function shippingDraft() {
+  const { agent, user } = await administrator(), part=await product(), order=await orderFor(user,part,"cod");
+  const partner=await ShippingPartner.create({ name:"Courier", email:"courier@example.com", whatsapp:"+9779800000000", whatsappOptIn:true });
+  order.fulfillmentStatus="allocated"; order.shippingPartner=partner._id; await order.save();
+  const page=await agent.get("/admin/orders/"+order._id).expect(200);
+  const preview=await agent.post("/admin/orders/"+order._id+"/notices/preview").type("form").send({ _csrf:token(page), channel:"email", recipient:"attacker@example.com" }).expect(302);
+  const notice=await ShippingNotice.findOne();
+  assert.equal(notice.recipient,partner.email);
+  return { agent,user,order,partner,notice,csrf:token(page),url:preview.headers.location };
+}
+test("shipping notices require provider setup and reject modified previews", async () => {
+  const { agent,notice,partner,csrf,url }=await shippingDraft();
+  const page=await agent.get(url).expect(200); assert.match(page.text,/Provider setup is required/);
+  await agent.post(url+"/send").type("form").send({ _csrf:csrf }).expect(503);
+  assert.equal((await ShippingNotice.findById(notice._id)).status,"draft");
+  await ShippingPartner.updateOne({ _id:partner._id }, { $set:{ email:"new@example.com" } });
+  await agent.post(url+"/send").type("form").send({ _csrf:csrf }).expect(409);
+});
+test("shipping provider acceptance is idempotent and failure never reports delivered", async () => {
+  const { agent,notice,csrf,url }=await shippingDraft();
+  const previousConfigured=shippingDelivery.configured, previousDeliver=shippingDelivery.deliver;
+  let calls=0;
+  try {
+    shippingDelivery.configured=()=>true;
+    shippingDelivery.deliver=async ()=> { calls++; await new Promise(resolve=>setTimeout(resolve,30)); return "mock-provider-reference"; };
+    const results=await Promise.all([agent.post(url+"/send").type("form").send({ _csrf:csrf }),agent.post(url+"/send").type("form").send({ _csrf:csrf })]);
+    assert.deepEqual(results.map(result=>result.status).sort(),[302,409]); assert.equal(calls,1);
+    assert.equal((await ShippingNotice.findById(notice._id)).status,"accepted");
+    const accepted=await agent.get(url); assert.match(accepted.text,/does not confirm delivery/);
+    const preview=await agent.post("/admin/orders/"+notice.order+"/notices/preview").type("form").send({ _csrf:csrf,channel:"email" }).expect(302);
+    shippingDelivery.deliver=async ()=>{ throw new Error("private-provider-error"); };
+    await agent.post(preview.headers.location+"/send").type("form").send({ _csrf:csrf }).expect(302);
+    const failed=await agent.get(preview.headers.location);
+    assert.match(failed.text,/unconfirmed/); assert.doesNotMatch(failed.text,/private-provider-error/);
+  } finally { shippingDelivery.configured=previousConfigured; shippingDelivery.deliver=previousDeliver; }
+});
+
+test("operator command grants and revokes only an existing registered account", async () => {
+  const { grant } = require("../scripts/admin-grant");
+  const { user, agent } = await account();
+  await assert.rejects(grant("missing@example.com"), /Account not found/);
+  await grant(user.email);
+  await agent.get("/admin").expect(200);
+  await grant(user.email,true);
+  await agent.get("/admin").expect(403);
+  assert.equal(await AdminAudit.countDocuments(),2);
+});
+test("paid stock-review reservation rolls back shortages and allocates once", async () => {
+  const { user }=await administrator(), part=await product(1), order=await orderFor(user,part);
+  order.paymentStatus="paid"; order.paidAt=new Date(); order.fulfillmentStatus="stock_review"; await order.save();
+  await assert.rejects(adminService.updateOrder(order._id,{ version:order.updatedAt.toISOString(),action:"allocate" },user._id),/insufficient/);
+  assert.equal((await Product.findById(part._id)).stock,1);
+  await Product.updateOne({ _id:part._id }, { $set:{ stock:3 } });
+  await adminService.updateOrder(order._id,{ version:order.updatedAt.toISOString(),action:"allocate" },user._id);
+  assert.equal((await Product.findById(part._id)).stock,1);
+  const current=await Order.findById(order._id);
+  await assert.rejects(adminService.updateOrder(order._id,{ version:current.updatedAt.toISOString(),action:"allocate" },user._id),/stock review/);
+});
+test("late external confirmation of a cancelled order stays paid for refund review without stock allocation", async () => {
+  const { user }=await account(), part=await product(), order=await orderFor(user,part,"esewa");
+  order.shippingStatus="cancelled"; await order.save();
+  await finalizeOrder(order._id,"paid","confirmed-external");
+  const current=await Order.findById(order._id);
+  assert.equal(current.paymentStatus,"paid"); assert.equal(current.fulfillmentStatus,"stock_review");
+  assert.equal(current.shippingStatus,"cancelled"); assert.equal((await Product.findById(part._id)).stock,10);
+});
+test("admin mutations require CSRF and archived products cannot be added to the cart", async () => {
+  const { agent }=await administrator(), part=await product();
+  await agent.post("/admin/products/"+part._id+"/archive").type("form").send({ active:"false",version:part.updatedAt.toISOString() }).expect(403);
+  assert.equal((await Product.findById(part._id)).active,true);
+  await Product.updateOne({ _id:part._id }, { $set:{ active:false } });
+  const page=await agent.get("/");
+  await agent.post("/cart/add/"+part._id).type("form").send({ _csrf:token(page),quantity:"1" }).expect(302);
+  const cart = await agent.get("/cart").expect(200);
+  assert.doesNotMatch(cart.text, /Brake Pad/);
 });

@@ -42,14 +42,14 @@ async function recommendations(userId, { excludeId, limit = 4 } = {}) {
       { $group: { _id: "$user", products: { $addToSet: "$items.product" } } },
     ]);
     const scores = rankCandidates(baskets, purchased);
-    const candidates = await Product.find({ _id: { $in: [...scores.keys()], $nin: excluded }, stock: { $gt: 0 } })
+    const candidates = await Product.find({ _id: { $in: [...scores.keys()], $nin: excluded }, active: { $ne: false }, stock: { $gt: 0 } })
       .select("name slug brand price image stock").lean();
     ranked = candidates.sort((a, b) => scores.get(String(b._id)) - scores.get(String(a._id)) ||
       String(a._id).localeCompare(String(b._id))).slice(0, limit);
   }
   if (ranked.length) return { mode: "collaborative", products: ranked };
   // Cold start and sparse overlap: label these as browsing suggestions, not personalized CF.
-  const products = await Product.find({ _id: { $nin: excluded }, stock: { $gt: 0 } })
+  const products = await Product.find({ _id: { $nin: excluded }, active: { $ne: false }, stock: { $gt: 0 } })
     .select("name slug brand price image stock").sort({ createdAt: -1, _id: 1 }).limit(limit).lean();
   return { mode: "discovery", products };
 }

@@ -37,7 +37,7 @@ router.post("/", async (req, res, next) => {
     const byId = new Map(products.map((product) => [String(product._id), product]));
     for (const item of totals.items) {
       const product = byId.get(item.productId);
-      if (!product || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || product.stock < item.quantity) {
+      if (!product || product.active === false || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || product.stock < item.quantity) {
         req.flash("error", `${item.name} is no longer available in that quantity. Please update your cart.`);
         return res.redirect("/cart");
       }
@@ -69,13 +69,14 @@ router.post("/", async (req, res, next) => {
       })),
       customer: { fullName, phone, email, address, city },
       subtotal: totals.subtotal, shippingFee: totals.shippingFee, total: totals.total,
+      paymentEnvironment: paymentMethod === "card" || paymentMethod === "esewa" && process.env.PAYMENT_MODE === "sandbox" ? "sandbox" : "live",
       paymentMethod, paymentStatus: "pending",
     });
     order.integrityHash = generateOrderHash(order);
     if (paymentMethod === "cod") {
       await mongoose.connection.transaction(async (session) => {
         for (const item of order.items) {
-          const result = await Product.updateOne({ _id: item.product, stock: { $gte: item.quantity } },
+          const result = await Product.updateOne({ _id: item.product, active: { $ne: false }, stock: { $gte: item.quantity } },
             { $inc: { stock: -item.quantity } }, { session });
           if (result.modifiedCount !== 1) throw httpError(409, "Stock changed during checkout. Please review your cart.");
         }
