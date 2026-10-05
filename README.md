@@ -1,113 +1,120 @@
 # MotoParts Nepal
 
-An e-commerce site for motorcycle spare parts in Nepal, built as a college
-e-commerce lab project. Stack: **Node.js + Express + MongoDB (Mongoose) + EJS**.
+A college e-commerce project for motorcycle parts in Nepal, built with Node.js,
+Express, MongoDB/Mongoose and EJS. It includes a product catalog, server-side
+shopping cart, guest/account checkout, payment receipts, wallets and notifications.
 
-## What's implemented, mapped to your lab requirements
+## Requirements and setup
 
-### Lab 1 — Dynamic shopping cart
-- The cart is stored **server-side**, in `req.session.cart`, and that session
-  is itself persisted to MongoDB via `connect-mongo` (see `server.js`). This
-  is a real server-side cart, not just JavaScript in the browser.
-- Cart logic lives in `middleware/cart.js` (`addItem`, `updateItem`,
-  `removeItem`, `clearCart`, `getCartTotals`).
-- Routes in `routes/cart.js`:
-  - `POST /cart/add/:productId` — add a product (respects stock limits)
-  - `POST /cart/update/:productId` — update quantity
-  - `POST /cart/remove/:productId` — remove an item
-  - `POST /cart/clear` — empty the cart
-  - `GET /cart` — view cart with live subtotal/shipping/total
-- Stock is checked before adding, and decremented for real once an order is
-  successfully paid (see `routes/payment.js` → `finalizeOrder`).
+Use Node.js 22 or newer and a **MongoDB replica set or MongoDB Atlas cluster**.
+Payment/inventory updates and wallet transfers use MongoDB transactions; a standalone
+MongoDB server cannot support those transactions, and startup reports that requirement.
 
-### Lab 2 — Dummy payment gateway (eSewa) + credit card flow
-Both are fully **simulated** — clearly labeled as such on-screen — since no
-real payment credentials are involved in a lab assignment.
-
-- **eSewa simulation** (`routes/payment.js`, views `esewa-login.ejs` →
-  `esewa-otp.ejs` → `payment-status.ejs`): mimics eSewa's real login + OTP
-  confirmation flow. Demo OTP is always `123456` so the flow is repeatable
-  for a live demo/viva.
-- **Credit card flow** (`card-payment.ejs`): a card form with client-side
-  formatting (spacing, expiry mask) and server-side validation. A card
-  number ending in `0000` is a built-in "declined transaction" demo case;
-  anything else that passes basic format checks succeeds.
-- Every attempt creates an `Order` document with a `paymentStatus` of
-  `pending` → `paid`/`failed`, and a generated transaction ID, so you can
-  show the DB record during your demo.
-
-## Project structure
-```
-motoparts-nepal/
-├── server.js              # app entry point, session/middleware wiring
-├── config/db.js            # MongoDB connection
-├── models/                 # Product.js, Order.js (Mongoose schemas)
-├── middleware/cart.js       # server-side cart logic (Lab 1 core)
-├── routes/
-│   ├── products.js         # home + product detail
-│   ├── cart.js              # add/update/remove/clear (Lab 1)
-│   ├── checkout.js          # delivery details + order creation
-│   └── payment.js           # eSewa + card simulation (Lab 2)
-├── views/                   # EJS templates
-├── public/css/style.css     # styling
-└── seed/seed.js             # sample motorcycle parts for Nepal market
+```sh
+npm ci
+cp .env.example .env
 ```
 
-## Setup
+Edit `.env` with a random `SESSION_SECRET`, the MongoDB connection string and
+`APP_BASE_URL` (the browser-accessible origin used for payment callbacks).
+For a local MongoDB replica set, Docker users can run:
 
-1. **Install MongoDB** locally, or create a free cluster on
-   [MongoDB Atlas](https://www.mongodb.com/atlas) and get a connection string.
+```sh
+docker compose up -d --wait
+npm run seed
+npm start
+```
 
-2. **Install dependencies** (run this on your own machine):
-   ```bash
-   cd motoparts-nepal
-   npm install
-   ```
+Open http://localhost:3000. `npm run dev` starts the app with automatic reloads.
+The product seed **replaces all products** and is intended for a development database.
+If using Atlas, set its replica-set connection string in `MONGO_URI` and omit Docker.
 
-3. **Configure environment variables**:
-   ```bash
-   cp .env.example .env
-   # then edit .env and set MONGO_URI to your local or Atlas connection string
-   ```
+## Payments
 
-4. **Seed sample products**:
-   ```bash
-   npm run seed
-   ```
+**Card payments are simulated.** Use dummy card details only. A future expiry and
+13–16 digit card number succeed; a number ending in `0000` demonstrates a declined
+payment. The app stores only the last four digits. Failed payments can be retried.
 
-5. **Run the app**:
-   ```bash
-   npm start
-   # or, for auto-reload during development:
-   npm run dev
-   ```
+**eSewa uses a configured gateway**, rather than an app-hosted login/OTP simulation.
+The example configuration targets eSewa's sandbox. Set the current sandbox signing
+key from the [official eSewa ePay documentation](https://developer.esewa.com.np/pages/Epay).
+Leave the signing key blank to disable eSewa while demonstrating the card flow.
+Never substitute production payment credentials for a college demonstration.
+Old `esewa-login`, `esewa-otp` and `wallet-login` templates are not active routes.
 
-6. Open **http://localhost:3000**
+The app verifies signed gateway responses and independently checks the amount,
+product code, transaction UUID and status with eSewa. It tracks retry UUIDs so a
+delayed callback can still be reconciled. Repeated/concurrent confirmations update
+inventory or wallet balance once. Unsigned failure redirects cannot change payment
+or ledger state. Pending gateway status remains pending.
 
-## Demo script for your lab/viva
+An order stays **paid** if external payment completes after stock sells out. Its
+receipt then requests store assistance and its `fulfillmentStatus` is `stock_review`.
+No inventory is deducted for that order; staff must arrange stock or a refund outside
+this prototype. This app has no automatic refund or admin fulfillment workflow.
 
-1. Browse the home page, filter by category (e.g. "Brakes"), open a product.
-2. Add 2–3 different parts to the cart, then go to `/cart` and demonstrate:
-   - updating quantity of an item
-   - removing an item
-   - the subtotal/shipping/total recalculating live
-3. Go to checkout, fill in delivery details, choose **eSewa**:
-   - log in with any ID/password (it's simulated)
-   - enter OTP `123456` → payment succeeds → receipt page with a generated
-     transaction ID
-4. Start a new order and choose **Credit/Debit Card**:
-   - use a normal-looking card number → success
-   - use a card number ending in `0000` (e.g. `4111 1111 1111 0000`) →
-     demonstrates a **declined** transaction, showing your failure-handling path
-5. Open MongoDB (Compass or `mongosh`) and show the `orders` collection with
-   `paymentStatus: "paid"`/`"failed"` and the `transactionId` field, plus the
-   `sessions` collection proving the cart is server-side.
+## Wallets and accounts
 
-## Notes for your report
-- Passwords/OTPs entered in the simulated eSewa flow are **never stored** —
-  only the outcome (paid/failed) and a generated transaction ID are saved.
-- Card numbers are never stored in full — only the last 4 digits
-  (`cardLast4`), which is standard PCI-conscious practice even in production
-  systems.
-- Shipping is a flat rate (`SHIPPING_FEE` in `middleware/cart.js`) — you can
-  extend this into a per-city rate table if you want to go further.
+Wallet access requires login. Top-ups must be verified through eSewa; there is no
+endpoint that credits an arbitrary balance. Transfers atomically update both wallets
+and create their ledger record. Amounts must be positive, at most NPR 1,000,000 and
+have no more than two decimal places. The wallet history displays transaction status.
+
+Optional local demo accounts:
+
+```sh
+npm run seed:wallets
+```
+
+This creates `yogjung@example.com`, `rita@example.com` and `bikash@example.com` with
+password `DemoWallet123!` (or `DEMO_WALLET_PASSWORD` from `.env`) and starter balances.
+Rerunning preserves existing passwords and balances. It refuses production mode.
+
+Order pages enforce account ownership; guest orders are tied to the checkout session.
+Logging in rotates the session identifier while retaining the cart and guest receipts.
+Logging out destroys the session. Local POST forms require a CSRF token; JSON clients
+can send it in the `x-csrf-token` header.
+
+## Optional notifications
+
+Set `GMAIL_USER` and `GMAIL_APP_PASSWORD` for email, or the Twilio variables in
+`.env.example` for WhatsApp confirmations. Blank credentials disable those channels.
+Messaging runs after payment commits, and delivery failures do not undo payment.
+Confirmations are attempted once per payment transition; there is no durable message
+retry queue yet.
+
+## Tests and checks
+
+```sh
+npm test
+npm audit --omit=dev
+```
+
+The regression suite starts an isolated in-memory MongoDB replica set; its first run
+downloads a MongoDB binary. Tests cover ownership, guest receipts, payment retries,
+duplicate callbacks, concurrent stock allocation, concurrent wallet transfers,
+transaction rollback, cart limits, fresh checkout prices, CSRF and wallet seeding.
+Gateway responses are stubbed; tests do not send payments or external messages.
+GitHub Actions runs the suite on pushes and pull requests.
+
+## Structure
+
+- `app.js`: application factory, sessions, CSRF and route wiring
+- `server.js`: database checks and HTTP/optional local HTTPS startup
+- `models/`: users, products, orders, wallets, transactions and notifications
+- `services/`: atomic payment/inventory and wallet operations
+- `routes/`: catalog, cart, checkout, payments, auth, wallets and notifications
+- `middleware/`: cart helpers, ownership checks, CSRF and shared view data
+- `utils/`: gateway signing/status verification and optional messages
+- `test/`: database-backed regression tests
+
+The displayed SHA-256 order checksum detects accidental changes to core order data.
+It is not a tamper-proof audit trail: anyone able to rewrite both an order and its
+checksum can recompute it. Payment status and gateway transaction IDs are separately
+validated through the payment flow.
+
+For production, use HTTPS, set `NODE_ENV=production` and a strong `SESSION_SECRET`,
+and configure `TRUST_PROXY=1` only behind one trusted reverse proxy. The card route
+remains a simulation; replace it with a verified provider integration before accepting
+real card payments. Admin fulfillment, refunds, a durable messaging queue and account
+recovery remain future work.

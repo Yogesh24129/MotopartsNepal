@@ -4,6 +4,7 @@
     <h3>Choose a demo wallet account</h3>
     <p>Pick an account to simulate being logged in (no password needed for this lab demo).</p>
     <form action="/wallet/login" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <div class="form-row">
         <label for="walletId">Account</label>
         <select id="walletId" name="walletId" required>

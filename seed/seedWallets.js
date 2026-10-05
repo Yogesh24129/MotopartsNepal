@@ -1,19 +1,33 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 const Wallet = require("../models/Wallet");
+const User = require("../models/User");
 
-const wallets = [
-  { ownerName: "Yogjung Thapa", email: "yogjung@example.com", balance: 5000 },
-  { ownerName: "Rita Sharma", email: "rita@example.com", balance: 2000 },
-  { ownerName: "Bikash Gurung", email: "bikash@example.com", balance: 1000 },
+const examples = [
+  { name: "Yogjung Thapa", email: "yogjung@example.com", balance: 5000 },
+  { name: "Rita Sharma", email: "rita@example.com", balance: 2000 },
+  { name: "Bikash Gurung", email: "bikash@example.com", balance: 1000 },
 ];
 
 async function seedWallets() {
-  await mongoose.connect(process.env.MONGO_URI);
-  await Wallet.deleteMany({});
-  await Wallet.insertMany(wallets);
-  console.log(`Seeded ${wallets.length} wallets.`);
-  process.exit(0);
+  if (process.env.NODE_ENV === "production") throw new Error("Demo wallets cannot be seeded in production.");
+  const passwordHash = await bcrypt.hash(process.env.DEMO_WALLET_PASSWORD || "DemoWallet123!", 10);
+  for (const example of examples) {
+    const user = await User.findOneAndUpdate({ email: example.email },
+      { $setOnInsert: { name: example.name, email: example.email, passwordHash } },
+      { upsert: true, new: true, runValidators: true });
+    await Wallet.findOneAndUpdate({ user: user._id },
+      { $setOnInsert: { ownerName: user.name, email: user.email, balance: example.balance } },
+      { upsert: true, runValidators: true });
+  }
+  console.log("Demo wallet accounts are ready. Existing passwords and balances were preserved.");
 }
 
-seedWallets();
+if (require.main === module) {
+  mongoose.connect(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/motoparts_nepal?replicaSet=rs0")
+    .then(seedWallets).catch((error) => { console.error("Wallet seed failed:", error.message); process.exitCode = 1; })
+    .finally(() => mongoose.disconnect());
+}
+
+module.exports = { seedWallets };

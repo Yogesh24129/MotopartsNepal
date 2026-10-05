@@ -28,6 +28,7 @@
 
       <% if (product.stock > 0) { %>
         <form action="/cart/add/<%= product._id %>" method="POST" style="display:flex; gap:10px; align-items:center;">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <input type="number" name="quantity" class="qty-input" value="1" min="1" max="<%= product.stock %>">
           <button type="submit" class="btn btn-primary">Add to cart</button>
         </form>

@@ -3,6 +3,7 @@
   <div class="form-card">
     <h3>Create an Account</h3>
     <form action="/auth/register" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <div class="form-row">
         <label for="name">Full name</label>
         <input type="text" id="name" name="name" required>

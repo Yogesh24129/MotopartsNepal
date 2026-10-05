@@ -7,8 +7,12 @@ router.get("/", async (req, res, next) => {
   try {
     const { category, q } = req.query;
     const filter = {};
+    if ((category && (typeof category !== "string" || category.length > 50)) ||
+        (q && (typeof q !== "string" || q.length > 100))) return res.status(400).render("error", {
+      title: "Invalid search", message: "Enter a shorter search or category.",
+    });
     if (category) filter.category = category;
-    if (q) filter.name = { $regex: q, $options: "i" };
+    if (q) filter.name = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
 
     const products = await Product.find(filter).sort({ createdAt: -1 });
     const categories = await Product.distinct("category");

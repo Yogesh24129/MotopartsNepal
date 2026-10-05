@@ -32,6 +32,7 @@
             <td>Rs. <%= item.price.toLocaleString('en-IN') %></td>
             <td>
               <form class="qty-form" action="/cart/update/<%= item.productId %>" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                 <input type="number" name="quantity" value="<%= item.quantity %>" min="1" max="<%= item.stock || 99 %>" class="qty-input" style="width:60px;">
                 <button type="submit" class="btn btn-outline btn-sm">Update</button>
               </form>
@@ -39,6 +40,7 @@
             <td>Rs. <%= (item.price * item.quantity).toLocaleString('en-IN') %></td>
             <td>
               <form action="/cart/remove/<%= item.productId %>" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                 <button type="submit" class="remove-link">Remove</button>
               </form>
             </td>
@@ -49,6 +51,7 @@
 
     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:20px;">
       <form action="/cart/clear" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <button type="submit" class="btn btn-outline btn-sm">Clear cart</button>
       </form>
 

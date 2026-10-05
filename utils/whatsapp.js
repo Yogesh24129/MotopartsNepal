@@ -1,6 +1,6 @@
 const twilio = require("twilio");
 
-const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
 
 // Converts a Nepali local number ("98XXXXXXXX") into E.164 format (+977XXXXXXXXXX)
 function toE164Nepal(phone) {
@@ -16,6 +16,7 @@ async function sendWhatsAppConfirmation(order) {
       return;
     }
 
+    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
     const to = `whatsapp:${toE164Nepal(order.customer.phone)}`;
 
     const message = await client.messages.create({

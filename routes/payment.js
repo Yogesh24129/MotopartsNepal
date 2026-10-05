@@ -2,198 +2,105 @@ const express = require("express");
 const router = express.Router();
 const crypto = require("crypto");
 const Order = require("../models/Order");
-const Product = require("../models/Product");
 const cartService = require("../middleware/cart");
 const esewa = require("../utils/esewa");
+const { loadOrder, ownsOrder, paymentMethod } = require("../middleware/orderAccess");
+const { finalizeOrder } = require("../services/payments");
 const { notifyUser } = require("../utils/notifications");
 const { sendDeliveryConfirmation } = require("../utils/email");
 const { sendWhatsAppConfirmation } = require("../utils/whatsapp");
 const { verifyOrderHash } = require("../utils/hash");
+const { httpError } = require("../utils/validation");
 
-/* ------------------------------------------------------------------ *
- *  IMPORTANT: This file SIMULATES payment gateways for a college
- *  e-commerce lab assignment. No real money moves, no real eSewa or
- *  card network is contacted. Every "verification" happens locally.
- * ------------------------------------------------------------------ */
-
-function generateTxnId(prefix) {
-  return `${prefix}-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-}
-
-async function loadPendingOrder(req, res, next) {
-  try {
-    const order = await Order.findById(req.params.orderId);
-    if (!order) {
-      req.flash("error", "Order not found.");
-      return res.redirect("/cart");
-    }
-    req.order = order;
-    next();
-  } catch (err) {
-    next(err);
+// External messages run after the transaction commits and cannot undo payment.
+async function announce(result) {
+  if (!result.changed) return;
+  const { order } = result;
+  const code = order._id.toString().slice(-6).toUpperCase();
+  const message = order.paymentStatus === "paid"
+    ? `Payment received for order #${code}. ${order.fulfillmentStatus === "stock_review" ? "Stock availability needs review." : "Your order has been placed successfully."} Total: Rs. ${order.total}.`
+    : `Payment failed for order #${code}. Please try again.`;
+  const actions = [() => notifyUser(order.user, message, { type: "order", link: `/payment/status/${order._id}` })];
+  if (order.paymentStatus === "paid" && order.fulfillmentStatus === "allocated") {
+    actions.push(() => sendDeliveryConfirmation(order), () => sendWhatsAppConfirmation(order));
   }
+  const results = await Promise.allSettled(actions.map((action) => action()));
+  for (const result of results) if (result.status === "rejected") console.error("[Confirmation]", result.reason.message);
 }
 
-async function finalizeOrder(order, status, transactionId) {
-  order.paymentStatus = status;
-  order.transactionId = transactionId;
-  await order.save();
-
-  // decrement stock only on a successful payment
-  if (status === "paid") {
-    for (const item of order.items) {
-      await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } });
-    }
-    await notifyUser(
-      order.user,
-      `Your order #${order._id.toString().slice(-6).toUpperCase()} has been placed successfully. Total: Rs. ${order.total}.`,
-      { type: "order", link: `/payment/status/${order._id}` }
-    );
-    await sendDeliveryConfirmation(order);
-    await sendWhatsAppConfirmation(order);
-  } else if (status === "failed") {
-    await notifyUser(
-      order.user,
-      `Payment failed for order #${order._id.toString().slice(-6).toUpperCase()}. Please try again.`,
-      { type: "order", link: `/payment/status/${order._id}` }
-    );
-  }
-}
-
-/* ---------------------------- eSewa flow ---------------------------- */
-// Step 2: eSewa redirects here after payment, with ?data=<base64 JSON>
 router.get("/esewa/callback", async (req, res, next) => {
   try {
-    const raw = Buffer.from(req.query.data, "base64").toString("utf-8");
-    const payload = JSON.parse(raw);
-
-    if (!esewa.verifySignature(payload)) {
-      req.flash("error", "eSewa response signature did not match — payment rejected.");
-      return res.redirect("/cart");
-    }
-
-    const orderId = payload.transaction_uuid.split("-")[0];
-    const order = await Order.findById(orderId);
-    if (!order) {
-      req.flash("error", "Order not found for this eSewa transaction.");
-      return res.redirect("/cart");
-    }
-
-    // Confirm directly with eSewa — never trust the redirect alone
+    const payload = esewa.decodeResponse(req.query.data);
+    const order = await Order.findOne({ paymentMethod: "esewa", $or: [
+      { esewaTransactionUuid: payload.transaction_uuid }, { esewaTransactionUuids: payload.transaction_uuid },
+    ] });
+    if (!order) throw httpError(404, "Order not found for this payment attempt.");
     const statusResult = await esewa.checkTransactionStatus(order.total, payload.transaction_uuid);
-
+    esewa.validateStatus(statusResult, order.total, payload.transaction_uuid);
+    // PENDING is not a failure. The buyer can return to the gateway to retry.
     if (statusResult.status === "COMPLETE") {
-      await finalizeOrder(order, "paid", statusResult.ref_id);
-      cartService.clearCart(req);
-    } else {
-      await finalizeOrder(order, "failed", null);
+      const result = await finalizeOrder(order._id, "paid", statusResult.ref_id, { method: "esewa", uuid: payload.transaction_uuid });
+      await announce(result);
+      if (ownsOrder(req, order)) cartService.clearCart(req);
     }
-
     res.redirect(`/payment/status/${order._id}`);
-  } catch (err) {
-    next(err);
-  }
+  } catch (error) { next(error); }
 });
 
-router.get("/esewa/failure/:orderId", loadPendingOrder, async (req, res, next) => {
-  try {
-    await finalizeOrder(req.order, "failed", null);
-    res.redirect(`/payment/status/${req.order._id}`);
-  } catch (err) {
-    next(err);
-  }
+// The unsigned cancellation redirect is only a navigation signal. It must not
+// overwrite a paid order or decide whether money moved at the gateway.
+router.get("/esewa/failure/:orderId", loadOrder, paymentMethod("esewa"), (req, res) => {
+  if (req.order.paymentStatus !== "paid") req.flash("error", "Payment was cancelled or could not be confirmed. You can retry.");
+  res.redirect(`/payment/status/${req.order._id}`);
 });
 
-// Step 1: build a signed form and send the browser to eSewa's real UAT gateway
-router.get("/esewa/:orderId", loadPendingOrder, async (req, res, next) => {
+router.get("/esewa/:orderId", loadOrder, paymentMethod("esewa"), async (req, res, next) => {
   try {
-    const order = req.order;
-    if (order.paymentStatus !== "pending") {
-      return res.redirect(`/payment/status/${order._id}`);
-    }
-
-    // Fresh UUID each attempt — eSewa rejects reusing one with the same amount
-    const transactionUuid = `${order._id}-${Date.now()}`;
-    order.esewaTransactionUuid = transactionUuid;
-    await order.save();
-
-    const totalAmount = order.total;
-    const signature = esewa.generateSignature(totalAmount, transactionUuid);
-
-    const fields = {
-      amount: totalAmount,
-      tax_amount: 0,
-      total_amount: totalAmount,
-      transaction_uuid: transactionUuid,
-      product_code: esewa.PRODUCT_CODE,
-      product_service_charge: 0,
-      product_delivery_charge: 0,
-      success_url: `${req.protocol}://${req.get("host")}/payment/esewa/callback`,
-      failure_url: `${req.protocol}://${req.get("host")}/payment/esewa/failure/${order._id}`,
-      signed_field_names: "total_amount,transaction_uuid,product_code",
-      signature,
-    };
-
+    if (req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
+    esewa.requireConfiguration();
+    if (req.order.esewaTransactionUuids.length >= 50) throw httpError(409, "Too many payment attempts. Please contact support.");
+    // Preserve every signed attempt so delayed callbacks can still be reconciled.
+    const uuid = `${req.order._id}-${crypto.randomUUID()}`;
+    const attempts = req.order.esewaTransactionUuid ? [uuid, req.order.esewaTransactionUuid] : [uuid];
+    const order = await Order.findOneAndUpdate(
+      { _id: req.order._id, paymentStatus: { $ne: "paid" } },
+      { $set: { esewaTransactionUuid: uuid }, $addToSet: { esewaTransactionUuids: { $each: attempts } } }, { new: true }
+    );
+    if (!order) return res.redirect(`/payment/status/${req.order._id}`);
+    const fields = esewa.paymentFields(order.total, order.esewaTransactionUuid,
+      `/payment/esewa/callback`, `/payment/esewa/failure/${order._id}`);
     res.render("esewa-redirect", { title: "Redirecting to eSewa", gatewayUrl: esewa.GATEWAY_FORM_URL, fields });
-  } catch (err) {
-    next(err);
-  }
+  } catch (error) { next(error); }
 });
 
-
-
-
-/* -------------------------- Credit card flow ------------------------- */
-
-router.get("/card/:orderId", loadPendingOrder, (req, res) => {
-  if (req.order.paymentStatus !== "pending") {
-    return res.redirect(`/payment/status/${req.order._id}`);
-  }
-  res.render("card-payment", {
-    title: "Card Payment (Simulated)",
-    order: req.order,
-  });
+router.get("/card/:orderId", loadOrder, paymentMethod("card"), (req, res) => {
+  if (req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
+  res.render("card-payment", { title: "Card Payment (Simulated)", order: req.order });
 });
 
-router.post("/card/:orderId/process", loadPendingOrder, async (req, res, next) => {
+router.post("/card/:orderId/process", loadOrder, paymentMethod("card"), async (req, res, next) => {
   try {
+    if (req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
     const { cardName, cardNumber, expiry, cvv } = req.body;
-    const digitsOnly = (cardNumber || "").replace(/\s+/g, "");
-
-    const looksValid =
-      cardName &&
-      /^\d{13,16}$/.test(digitsOnly) &&
-      /^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry || "") &&
-      /^\d{3,4}$/.test(cvv || "");
-
-    // Demo rule: card numbers ending in 0000 are used to demonstrate
-    // a declined transaction; everything else that "looks valid" succeeds.
-    const declined = digitsOnly.endsWith("0000");
-    const success = looksValid && !declined;
-
-    const status = success ? "paid" : "failed";
-    const txnId = success ? generateTxnId("CARD") : null;
-
-    req.order.cardLast4 = digitsOnly.slice(-4);
-    await finalizeOrder(req.order, status, txnId);
-    if (success) cartService.clearCart(req);
-
+    const digitsOnly = typeof cardNumber === "string" ? cardNumber.replace(/\s+/g, "") : "";
+    const match = typeof expiry === "string" && expiry.match(/^(0[1-9]|1[0-2])\/(\d{2})$/);
+    const validExpiry = match && Date.UTC(2000 + Number(match[2]), Number(match[1]), 1) > Date.now();
+    const valid = typeof cardName === "string" && cardName.trim() && /^\d{13,16}$/.test(digitsOnly) &&
+      validExpiry && typeof cvv === "string" && /^\d{3,4}$/.test(cvv);
+    const success = Boolean(valid && !digitsOnly.endsWith("0000"));
+    const txnId = success ? `CARD-${crypto.randomUUID()}` : null;
+    const result = await finalizeOrder(req.order._id, success ? "paid" : "failed", txnId,
+      { method: "card", cardLast4: digitsOnly.slice(-4) });
+    await announce(result);
+    if (result.order.paymentStatus === "paid") cartService.clearCart(req);
     res.redirect(`/payment/status/${req.order._id}`);
-  } catch (err) {
-    next(err);
-  }
+  } catch (error) { next(error); }
 });
 
-/* ---------------------------- Result page ---------------------------- */
-router.get("/status/:orderId", loadPendingOrder, (req, res) => {
-  const order = req.order;
-  const dataIntact = verifyOrderHash(order);
-  res.render("payment-status", {
-    title: order.paymentStatus === "paid" ? "Payment Successful" : "Payment Failed",
-    order,
-    dataIntact,
-  });
+router.get("/status/:orderId", loadOrder, (req, res) => {
+  res.render("payment-status", { title: req.order.paymentStatus === "paid" ? "Payment Successful" :
+    req.order.paymentStatus === "pending" ? "Payment Pending" : "Payment Failed", order: req.order,
+    dataIntact: verifyOrderHash(req.order) });
 });
-
 
 module.exports = router;

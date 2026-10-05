@@ -15,7 +15,9 @@ const orderItemSchema = new mongoose.Schema(
 const orderSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    guestOwner: { type: String },
     items: [orderItemSchema],
+    fulfillmentStatus: { type: String, enum: ["unfulfilled", "allocated", "stock_review"], default: "unfulfilled" },
     customer: {
       fullName: { type: String, required: true },
       phone: { type: String, required: true },
@@ -38,7 +40,8 @@ const orderSchema = new mongoose.Schema(
       default: "pending",
     },
     transactionId: { type: String },
-    esewaTransactionUuid: { type: String },
+    esewaTransactionUuid: { type: String, index: true },
+    esewaTransactionUuids: { type: [String], index: true },
     // Only the last 4 digits are ever stored for the simulated card flow
     cardLast4: { type: String },
   },

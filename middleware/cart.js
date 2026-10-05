@@ -12,6 +12,8 @@
  * }
  */
 
+const { quantity: parseQuantity, httpError } = require("../utils/validation");
+
 const SHIPPING_FEE = 150; // flat rate shipping in NPR, inside Kathmandu valley
 
 function ensureCart(req) {
@@ -24,7 +26,8 @@ function ensureCart(req) {
 function addItem(req, product, quantity = 1) {
   const cart = ensureCart(req);
   const id = product._id.toString();
-  const qty = Math.max(1, parseInt(quantity, 10) || 1);
+  const qty = parseQuantity(quantity);
+  if (qty === null) throw httpError(400, "Enter a positive whole-number quantity.");
 
   if (cart[id]) {
     cart[id].quantity += qty;
@@ -45,16 +48,18 @@ function addItem(req, product, quantity = 1) {
   }
 }
 
-function updateItem(req, productId, quantity) {
+function updateItem(req, productId, quantity, stock) {
   const cart = ensureCart(req);
-  const qty = parseInt(quantity, 10);
+  const qty = parseQuantity(quantity, true);
+  if (qty === null) throw httpError(400, "Enter a non-negative whole-number quantity.");
 
   if (!cart[productId]) return;
 
-  if (isNaN(qty) || qty <= 0) {
+  if (qty === 0 || stock === 0) {
     delete cart[productId];
   } else {
-    cart[productId].quantity = qty;
+    cart[productId].stock = stock ?? cart[productId].stock;
+    cart[productId].quantity = Math.min(qty, cart[productId].stock);
   }
 }
 
@@ -91,7 +96,11 @@ function exposeCartCount(req, res, next) {
 async function exposeCurrentUser(req, res, next) {
   if (req.session.userId) {
     const User = require("../models/User");
-    res.locals.currentUser = await User.findById(req.session.userId).select("name email");
+    try {
+      res.locals.currentUser = await User.findById(req.session.userId).select("name email");
+    } catch (error) {
+      return next(error);
+    }
   } else {
     res.locals.currentUser = null;
   }

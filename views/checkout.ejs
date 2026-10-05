@@ -5,6 +5,7 @@
 
     <div style="display:grid; grid-template-columns: 1.3fr 1fr; gap:32px;">
       <form class="form-card" action="/checkout" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <h3 style="font-size:1rem;">Delivery Details</h3>
 
         <div class="form-row">

@@ -22,7 +22,7 @@ router.post("/add/:productId", async (req, res, next) => {
       return res.redirect("back");
     }
 
-    cartService.addItem(req, product, req.body.quantity || 1);
+    cartService.addItem(req, product, req.body.quantity ?? 1);
     req.flash("success", `${product.name} added to cart.`);
 
     // AJAX support: return JSON if requested, else redirect
@@ -36,13 +36,21 @@ router.post("/add/:productId", async (req, res, next) => {
 });
 
 // Update quantity of an item already in the cart
-router.post("/update/:productId", (req, res) => {
-  cartService.updateItem(req, req.params.productId, req.body.quantity);
-
-  if (req.xhr || req.headers.accept?.includes("json")) {
-    return res.json({ ok: true, ...cartService.getCartTotals(req) });
+router.post("/update/:productId", async (req, res, next) => {
+  try {
+    const product = await Product.findById(req.params.productId);
+    if (!product) {
+      cartService.removeItem(req, req.params.productId);
+    } else {
+      cartService.updateItem(req, req.params.productId, req.body.quantity, product.stock);
+    }
+    if (req.xhr || req.headers.accept?.includes("json")) {
+      return res.json({ ok: true, ...cartService.getCartTotals(req) });
+    }
+    res.redirect("/cart");
+  } catch (error) {
+    next(error);
   }
-  res.redirect("/cart");
 });
 
 // Remove item from cart entirely

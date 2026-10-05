@@ -5,11 +5,15 @@
       <% if (order.paymentStatus==='paid' ) { %>
         <div class="status-icon ok">&#10003;</div>
         <h1>Payment Successful</h1>
-        <p>Thank you, <%= order.customer.fullName %> — your order has been placed.</p>
+        <% if (order.fulfillmentStatus === 'stock_review') { %>
+          <p>Payment received. Some items sold out during payment; please contact the store to arrange fulfillment or a refund.</p>
+        <% } else { %>
+          <p>Thank you, <%= order.customer.fullName %> — your order has been placed.</p>
+        <% } %>
         <% } else { %>
           <div class="status-icon fail">&#10007;</div>
-          <h1>Payment Failed</h1>
-          <p>We couldn't process your payment. No amount was charged. You can try again.</p>
+          <h1><%= order.paymentStatus === 'pending' ? 'Payment Pending' : 'Payment Failed' %></h1>
+          <p><%= order.paymentStatus === 'pending' ? 'Payment has not been confirmed. Check your gateway account before retrying.' : 'Your payment attempt failed. You can try again.' %></p>
           <a href="/payment/<%= order.paymentMethod %>/<%= order._id %>" class="btn btn-primary"
             style="margin-top:10px;">Retry Payment</a>
           <% } %>
