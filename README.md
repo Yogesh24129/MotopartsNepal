@@ -6,6 +6,10 @@ on-page SEO. Built with Node.js, Express, EJS and MongoDB.
 
 ## Clone and run on Windows
 
+Use Windows 11 (64-bit Intel/AMD) for the bundled MongoDB 8.0 runtime. Older or
+unsupported devices can use Atlas in external mode instead.
+[MongoDB Windows requirements](https://www.mongodb.com/docs/v8.0/tutorial/install-mongodb-on-windows/)
+
 Install Git and **Node.js LTS 24 or later** (Node.js 22.13+ on the 22.x branch is also
 supported). Reopen PowerShell after installation.
 
@@ -235,5 +239,5 @@ npm audit --omit=dev
 Tests use isolated temporary databases and stub external payments/messages. They
 cover transactions, ownership, CSRF, analytics, SEO, recommendations, setup,
 persistent restarts, cash-on-delivery checkout and HTTPS configuration. GitHub Actions
-runs tests on pushes and pull requests. Windows command scripts are intended for
-Windows; validation on other operating systems does not establish Windows execution.
+runs the setup command and regression suite on Windows and Linux. The Windows job
+also launches the app through start.cmd and verifies the homepage responds.

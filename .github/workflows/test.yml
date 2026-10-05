@@ -22,4 +22,29 @@ jobs:
       - if: runner.os == 'Windows'
         run: cmd /c setup.cmd
       - run: npm test
+      - name: Verify Windows application startup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $app = Start-Process cmd.exe -ArgumentList '/c start.cmd' -PassThru -RedirectStandardOutput app-output.log -RedirectStandardError app-error.log
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 60; $attempt++) {
+              if ($app.HasExited) { throw "Application exited before startup." }
+              try {
+                $response = Invoke-WebRequest http://localhost:3000/ -TimeoutSec 2
+                if ($response.StatusCode -eq 200 -and $response.Content.Contains('Session analytics')) {
+                  $ready = $true
+                  break
+                }
+              } catch { Start-Sleep -Seconds 1 }
+            }
+            if (-not $ready) { throw "Application did not serve the homepage within 60 seconds." }
+            Write-Output 'Windows start.cmd served the MotoParts homepage successfully.'
+          } catch {
+            Get-Content app-output.log, app-error.log -ErrorAction SilentlyContinue
+            throw
+          } finally {
+            if (-not $app.HasExited) { taskkill /PID $app.Id /T /F | Out-Null }
+          }
       - run: npm audit --omit=dev --audit-level=high
