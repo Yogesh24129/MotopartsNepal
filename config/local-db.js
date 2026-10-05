@@ -43,7 +43,11 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
         if (config.members[0].host !== host) {
           config.members[0].host = host;
           config.version += 1;
-          await admin.command({ replSetReconfig: config, force: true });
+          try { await admin.command({ replSetReconfig: config, force: true }); }
+          catch (error) {
+            // Reconfiguration can close the command connection as the member steps down.
+            if (error.name !== "MongoNetworkError" && ![91, 11600, 11602, 10107, 13435].includes(error.code)) throw error;
+          }
         }
       }
       catch (error) {
@@ -51,7 +55,11 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
         await admin.command({ replSetInitiate: { _id: "motoparts-local", members: [{ _id: 0, host: `127.0.0.1:${port}` }] } });
       }
       const deadline = Date.now() + 30000;
-      while (!(await admin.command({ hello: 1 })).isWritablePrimary) {
+      while (true) {
+        try { if ((await admin.command({ hello: 1 })).isWritablePrimary) break; }
+        catch (error) {
+          if (error.name !== "MongoNetworkError" && ![91, 11600, 11602, 10107, 13435].includes(error.code)) throw error;
+        }
         if (Date.now() > deadline) throw new Error("Local MongoDB did not become ready within 30 seconds.");
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
