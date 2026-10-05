@@ -1,0 +1,21 @@
+<% if (recommendations.products.length) { %>
+<section class="recommendations" aria-labelledby="recommendations-heading">
+  <h2 id="recommendations-heading"><%= recommendations.mode === 'collaborative' ? 'Recommended for you' : 'Discover more parts' %></h2>
+  <p><%= recommendations.mode === 'collaborative' ? 'Suggestions based on your paid purchases and products bought by customers with similar purchase histories.' : 'Explore available parts while we learn more from your completed purchases.' %> Check bike compatibility before ordering.</p>
+  <div class="product-grid">
+    <% recommendations.products.forEach(function(part) { %>
+      <article class="product-card">
+        <a href="/product/<%= encodeURIComponent(part.slug) %>" class="thumb">
+          <img src="<%= part.image %>" alt="<%= part.name %> by <%= part.brand %>" loading="lazy" decoding="async">
+        </a>
+        <div class="body">
+          <div class="brand-tag"><%= part.brand %></div>
+          <h3><a href="/product/<%= encodeURIComponent(part.slug) %>"><%= part.name %></a></h3>
+          <div class="price">Rs. <%= part.price.toLocaleString('en-IN') %></div>
+          <a href="/product/<%= encodeURIComponent(part.slug) %>" class="btn btn-outline btn-sm">View part</a>
+        </div>
+      </article>
+    <% }) %>
+  </div>
+</section>
+<% } %>

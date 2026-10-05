@@ -16,6 +16,7 @@
       <a href="/?category=Helmets%20%26%20Gear" class="btn btn-primary" data-marketing-click="PromotionClick" data-marketing-target="lab7-helmets">Shop riding gear &rarr;</a>
     </aside>
   <% } %>
+  <%- include('partials/recommendations') %>
   <div class="chip-row">
     <a href="/" class="chip <%= activeCategory === '' ? 'active' : '' %>">All Parts</a>
     <% categories.forEach(function(cat) { %>

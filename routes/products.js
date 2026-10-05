@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Product = require("../models/Product");
+const { recommendations } = require("../services/recommendations");
 const { catalogSEO, productSEO, gaPage } = require("../services/seo");
 
 // Home page - product listing with optional category/search filter
@@ -20,10 +21,12 @@ router.get("/", async (req, res, next) => {
 
     const seo = catalogSEO(category, Boolean(q), categories.includes(category));
     res.set("X-Robots-Tag", seo.robots);
+    if (res.locals.currentUser) res.set("Cache-Control", "private, no-store");
     res.render("index", {
       seo, gaPage: gaPage("catalog", seo),
       title: "MotoParts Nepal — Genuine Motorcycle Parts",
       products,
+      recommendations: await recommendations(res.locals.currentUser?._id),
       marketingPage: "catalog",
       categories,
       activeCategory: category || "",
@@ -43,7 +46,9 @@ router.get("/product/:slug", async (req, res, next) => {
     }
     const seo = productSEO(product);
     res.set("X-Robots-Tag", seo.robots);
+    if (res.locals.currentUser) res.set("Cache-Control", "private, no-store");
     res.render("product", { seo, gaPage: gaPage("product", seo, product), title: product.name, product, marketingPage: "product",
+      recommendations: await recommendations(res.locals.currentUser?._id, { excludeId: product._id }),
       marketingProduct: { id: String(product._id), name: product.name, value: product.price, currency: "NPR" } });
   } catch (err) {
     next(err);

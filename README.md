@@ -269,3 +269,48 @@ session lasts over 10 seconds, includes a key event, or has at least two page/sc
 views. See [Google's bounce-rate guide](https://support.google.com/analytics/answer/12195621?hl=en).
 Capture report screenshots after real demo traffic has been processed; do not present
 local event counts as Google Analytics measurements.
+
+## Lab 10: Collaborative filtering recommendations
+
+Signed-in customers see recommendations on the catalog and product detail pages.
+The engine uses **item-based collaborative filtering** with implicit feedback from
+paid orders. Each account contributes one binary interaction per product regardless
+of quantity or repeat purchases. Guest, pending and failed orders are excluded.
+
+For products A and B, similarity is:
+
+```text
+similarity(A, B) = customers who bought both / sqrt(customers who bought A × customers who bought B)
+candidate score = sum of similarity(candidate, purchased item) over the current user's purchased items
+```
+
+The engine ranks positive-score candidates and returns up to four available products.
+It excludes products already purchased, deleted products, out-of-stock products and
+the product currently being viewed. Equal scores use a stable product-ID tie break.
+When no purchase overlap exists, **Discover more parts** shows recently added,
+available products instead; these are not described as personalized recommendations.
+An empty eligible catalog hides the section. Signed-in responses are marked private
+and no-store; other customers' identities, histories and scores are never rendered.
+Recommendations use order records independently of optional advertising analytics.
+
+### Demonstration
+
+1. Ensure the catalog has at least three available products, A, B and C.
+2. Register demo customer one and complete simulated card purchases of A and B.
+3. Register demo customer two in another browser session and purchase A only.
+4. As customer two, open the catalog: B appears under **Recommended for you** because
+   customers who purchased A also purchased B. A is excluded from recommendations.
+5. Open B: B itself is excluded from that product page's suggestions.
+6. Use a new customer with no paid orders to show the **Discover more parts** fallback.
+   Failed/pending payments do not create recommendation interactions.
+
+No fabricated purchase history is inserted automatically. Existing paid simulated
+card orders are valid demo inputs. Suggestions do not guarantee bike compatibility;
+the interface asks customers to check it before ordering. Tests cover cosine scoring,
+repeat purchases, paid-only history, guest exclusion, unavailable/deleted products,
+current-product exclusion, cold start and rendered suggestions.
+
+This basic engine aggregates paid user–product interactions on each personalized
+request. It is suitable for the lab's small catalog; a larger store should precompute
+similarities and refresh them as purchases change. A compound user/payment-status
+index supports the current customer's history lookup.

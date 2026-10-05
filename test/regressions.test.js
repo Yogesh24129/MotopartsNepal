@@ -644,3 +644,64 @@ test("SEO JSON safely escapes script terminators and analytics configuration val
     process.env.APP_BASE_URL = "http://localhost:3000";
   }
 });
+
+test("Lab 10 collaborative filtering ranks shared purchases and excludes unavailable or owned parts", async () => {
+  const { recommendations, rankCandidates } = require("../services/recommendations");
+  const { agent, user } = await account();
+  const seed = await product();
+  async function part(slug, stock = 10) {
+    return Product.create({ name: slug, slug, brand: "Test", category: "Brakes", price: 100, stock });
+  }
+  const strong = await part("strong-match"), weak = await part("weak-match"), unrelated = await part("unrelated");
+  const unavailable = await part("sold-out", 0), deleted = await part("deleted");
+  const neighbor = new mongoose.Types.ObjectId(), other = new mongoose.Types.ObjectId();
+  async function paid(buyer, parts, status = "paid") {
+    return Order.create({ user: buyer, items: parts.map((p) => ({ product: p._id, name: p.name, quantity: 1, price: p.price })),
+      customer: { fullName: "Private buyer", phone: "9800000000", address: "Private street", city: "Kathmandu" },
+      subtotal: 100, total: 100, shippingFee: 0, paymentMethod: "card", paymentStatus: status });
+  }
+  await paid(user._id, [seed]);
+  await paid(neighbor, [seed, strong, weak, unavailable, deleted]);
+  await paid(neighbor, [seed, strong]); // Repeated purchases count as one interaction.
+  await paid(other, [weak, unrelated]);
+  await paid(user._id, [unrelated], "failed");
+  await paid(new mongoose.Types.ObjectId(), [seed, unrelated], "pending");
+  await paid(undefined, [seed, unrelated]); // Guests are not treated as one shared user.
+  await Product.deleteOne({ _id: deleted._id });
+  const result = await recommendations(user._id);
+  assert.equal(result.mode, "collaborative");
+  assert.deepEqual(result.products.map((p) => p.slug), ["strong-match", "weak-match"]);
+  assert.ok(result.products.every((p) => !('customer' in p) && !('score' in p)));
+  const excluded = await recommendations(user._id, { excludeId: strong._id });
+  assert.deepEqual(excluded.products.map((p) => p.slug), ["weak-match"]);
+  const page = await agent.get("/").expect(200);
+  const { JSDOM } = require("jsdom");
+  const section = new JSDOM(page.text).window.document.querySelector(".recommendations");
+  assert.match(section.textContent, /Recommended for you/);
+  assert.equal(section.querySelectorAll("article").length, 2);
+  assert.ok(!section.textContent.includes("Private street"));
+  const detail = await agent.get("/product/strong-match").expect(200);
+  const detailSection = new JSDOM(detail.text).window.document.querySelector(".recommendations");
+  assert.ok(!detailSection.querySelector('a[href="/product/strong-match"]'));
+  const scores = rankCandidates([{ _id: "a", products: ["x", "y", "y"] }, { _id: "b", products: ["x"] }], new Set(["x"]));
+  assert.equal(scores.get("y"), 1 / Math.sqrt(2));
+});
+
+test("Lab 10 cold start is labeled discovery and guests receive no personal recommendations", async () => {
+  const { recommendations } = require("../services/recommendations");
+  const { agent, user } = await account();
+  const seed = await product();
+  const cold = await recommendations(user._id);
+  assert.equal(cold.mode, "discovery");
+  assert.equal(cold.products.length, 1);
+  assert.deepEqual(await recommendations(null), { mode: "hidden", products: [] });
+  const { JSDOM } = require("jsdom");
+  const guest = await request(app).get("/").expect(200);
+  assert.equal(new JSDOM(guest.text).window.document.querySelector(".recommendations"), null);
+  const page = await agent.get("/").expect(200);
+  assert.match(new JSDOM(page.text).window.document.querySelector(".recommendations").textContent, /Discover more parts/);
+  const order = await orderFor(user, seed);
+  order.paymentStatus = "paid";
+  await order.save();
+  assert.deepEqual((await recommendations(user._id)).products, []);
+});
