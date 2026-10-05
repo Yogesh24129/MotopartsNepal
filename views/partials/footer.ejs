@@ -7,7 +7,7 @@
         <details class="marketing-preferences" <%= marketingConsent === 'unknown' ? 'open' : '' %>>
           <summary>Marketing measurement · <%= marketingConsent === 'granted' ? 'allowed' : marketingConsent === 'denied' ? 'declined' : 'your choice' %></summary>
           <p>Allow us to measure product views, promotion clicks and completed purchases for this demo.
-            <%= marketing.pixelId ? 'Meta Pixel will also receive browsing and purchase events, page URLs and browser information.' : 'Events stay in this site’s demo dashboard. No Meta Pixel is connected.' %>
+            <%= marketing.pixelId || marketing.gaId ? 'Configured Meta Pixel and/or Google Analytics tags will also receive browsing and purchase events, page URLs and browser information.' : 'Events stay in this site’s demo dashboard. No external analytics service is connected.' %>
             Your checkout contact details are excluded. Declining also clears this session’s local marketing history.</p>
           <form action="/marketing/consent" method="POST">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -19,7 +19,7 @@
       <% } %>
     </div>
   </footer>
-  <script type="application/json" id="marketing-config"><%- serializeMarketing({ enabled: marketing.enabled, pixelId: marketing.pixelId, consent: marketingConsent, csrfToken, page: marketingPage, product: marketingProduct, purchase: marketingPurchase, checkout: typeof marketingCheckout !== 'undefined' ? marketingCheckout : null }) %></script>
+  <script type="application/json" id="marketing-config"><%- serializeMarketing({ enabled: marketing.enabled, pixelId: marketing.pixelId, consent: marketingConsent, gaId: marketing.gaId, gaDebug: marketing.gaDebug, gaPage, csrfToken, page: marketingPage, product: marketingProduct, purchase: marketingPurchase, checkout: typeof marketingCheckout !== 'undefined' ? marketingCheckout : null }) %></script>
   <script src="/js/marketing.js" defer></script>
 </body>
 </html>

@@ -198,3 +198,74 @@ received an event, and this integration does not implement server-side Conversio
 API delivery or a durable retry queue. Withdrawal cannot erase events already sent
 to Meta. Official references: [Meta Pixel implementation](https://developers.facebook.com/docs/meta-pixel/implementation/)
 and [event reference](https://developers.facebook.com/docs/meta-pixel/reference/).
+
+## Lab 8: Search Engine Optimization and Google Analytics
+
+Public catalog, category and product pages now render unique titles, descriptions,
+keyword metadata, canonical URLs and social previews. Product images have descriptive
+alt text; product pages include breadcrumbs and Product/Offer JSON-LD with current
+NPR prices and stock status. No ratings are fabricated. Keyword metadata is included
+for the lab, but Google ignores the keywords tag: meaningful page content, titles and
+image descriptions matter. See [Google's supported metadata](https://developers.google.com/search/docs/crawling-indexing/special-tags).
+
+`/sitemap.xml` lists the catalog, categories and products. `/robots.txt` points to the
+sitemap and excludes private routes. Search results, authentication, checkout,
+wallet, receipts and error pages have noindex metadata and headers. Robots rules
+are crawl hints; existing authentication remains the protection for private pages.
+Set `APP_BASE_URL` to the site's real HTTP(S) origin for canonical and sitemap URLs.
+Production requires this value. For a staging/demo site that should stay out of
+search results, use `SITE_INDEXING_ENABLED=false` (empty sitemap and noindex public
+pages). A localhost demo is not publicly crawlable. After public deployment, submit
+its sitemap in your own Google Search Console account and inspect a product URL.
+
+### Connect GA4
+
+Google transmission is disabled by default. A real GA4 property and Measurement ID
+are required; the local Lab 7 dashboard does not calculate GA4 traffic or bounce rate.
+
+1. Create a dedicated demo Google Analytics property and a Web data stream for your
+   site. Copy its Measurement ID (`G-...`).
+2. Disable **Enhanced measurement** in that stream for this demo. The app explicitly
+   sends page views and ecommerce events; automatic history, form and site-search
+   tracking could duplicate views or collect additional URL/form information.
+3. Configure your local `.env` (never commit it):
+
+   ```dotenv
+   MARKETING_ENABLED=true
+   GA4_ENABLED=true
+   GA4_MEASUREMENT_ID=G-YOUR_REAL_ID
+   GA4_DEBUG_MODE=true
+   ```
+
+4. Restart the app, allow measurement in the footer, and browse the catalog and a
+   product. Use GA4 **DebugView** and **Realtime** to confirm events arrive. Complete
+   a simulated card purchase to verify the ecommerce journey. Set debug mode false
+   after testing; use a separate demo property for simulated orders.
+
+The Google tag loads only after consent on catalog, product, checkout and receipt
+pages. Events are `page_view`, `view_item`, `begin_checkout` and server-confirmed
+`purchase`. Default automatic page views are disabled to avoid duplicates, as
+[Google documents](https://developers.google.com/analytics/devguides/collection/ga4/views).
+The tag provides session and engagement measurement. GA4 and Meta can be enabled
+independently. Advertising consent remains denied; Google signals and advertising
+personalization are disabled.
+
+Event parameters exclude checkout contact details. Page locations are server-generated
+public paths with search strings and receipt order IDs removed; referrer paths and
+queries are removed. Purchase transaction IDs are stable hashes and browser storage
+prevents repeated attempts on reload. Withdrawal disables further Google collection;
+it does not erase data already sent to Google. Blocked scripts, unavailable browser
+storage and network failures can affect delivery. Automated tests verify commands
+and payloads, but cannot establish live receipt in an unconfigured GA4 account.
+
+### Monitor traffic and bounce rate
+
+Use **Realtime** for immediate activity, **Traffic acquisition** for sessions and
+channels, and **Pages and screens** for page views. To show bounce rate, an Editor or
+Administrator can customize a detail report: **Customize report → Report data →
+Metrics → Add metric**, add **Bounce rate** and **Engagement rate**, then Apply and
+Save. GA4 bounce rate is the percentage of sessions that were not engaged. An engaged
+session lasts over 10 seconds, includes a key event, or has at least two page/screen
+views. See [Google's bounce-rate guide](https://support.google.com/analytics/answer/12195621?hl=en).
+Capture report screenshots after real demo traffic has been processed; do not present
+local event counts as Google Analytics measurements.

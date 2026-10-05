@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const { httpError } = require("../utils/validation");
 const cartService = require("../middleware/cart");
 const { generateOrderHash } = require("../utils/hash");
+const { gaPage } = require("../services/seo");
 
 // Checkout page - delivery details + payment method choice
 router.get("/", (req, res) => {
@@ -14,8 +15,9 @@ router.get("/", (req, res) => {
     req.flash("error", "Your cart is empty.");
     return res.redirect("/cart");
   }
-  res.render("checkout", { title: "Checkout", ...totals, marketingPage: "checkout",
-    marketingCheckout: { value: totals.total, currency: "NPR", num_items: totals.itemCount } });
+  res.render("checkout", { title: "Checkout", ...totals, marketingPage: "checkout", gaPage: gaPage("checkout"),
+    marketingCheckout: { value: totals.total, currency: "NPR", num_items: totals.itemCount,
+      items: totals.items.map((item) => ({ item_id: item.productId, item_name: item.name, price: item.price, quantity: item.quantity })) } });
 });
 
 // Create the order (status: pending) then send the customer to the

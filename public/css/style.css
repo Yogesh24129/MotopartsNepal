@@ -434,3 +434,5 @@ button.cart-link:hover {
 .marketing-table-wrap { overflow-x: auto; }
 @media (max-width: 900px) { .marketing-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .marketing-dashboard-heading { flex-direction: column; } }
 @media (max-width: 640px) { .marketing-promo { flex-direction: column; align-items: flex-start; } .marketing-metrics { grid-template-columns: 1fr; } }
+.product-breadcrumbs { margin: 24px 0; color: var(--muted); font-size: .85rem; }
+.product-breadcrumbs a { text-decoration: underline; }

@@ -1,4 +1,4 @@
-/* Lab 7: browser events stay local unless a configured Meta Pixel is consented to. */
+/* Labs 7–8: external measurement loads only after explicit consent. */
 (() => {
   "use strict";
   const element = document.getElementById("marketing-config");
@@ -10,7 +10,7 @@
   const visible = new Set();
   const queue = [];
   let timer, observer;
-  const debug = { mode: config.pixelId ? "meta-pixel" : "local-demo", consent: config.consent, events: [] };
+  const debug = { mode: [config.pixelId && "meta-pixel", config.gaId && "ga4"].filter(Boolean).join("+") || "local-demo", consent: config.consent, events: [] };
   window.motopartsMarketing = debug;
 
   function storageGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
@@ -24,6 +24,8 @@
     clearTimeout(timer);
     if (observer) observer.disconnect();
     if (window.fbq) window.fbq("consent", "revoke");
+    if (config.gaId) window[`ga-disable-${config.gaId}`] = true;
+    if (window.gtag) window.gtag("consent", "update", { analytics_storage: "denied" });
   }
   window.addEventListener("storage", (event) => {
     if (event.key === "motoparts-marketing-consent" && event.newValue === "denied") stop();
@@ -57,10 +59,36 @@
     window.fbq("init", config.pixelId);
   }
 
+  if (config.gaId && config.gaPage) {
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+    window[`ga-disable-${config.gaId}`] = false;
+    window.gtag("consent", "default", { analytics_storage: "denied", ad_storage: "denied",
+      ad_user_data: "denied", ad_personalization: "denied" });
+    window.gtag("consent", "update", { analytics_storage: "granted" });
+    window.gtag("js", new Date());
+    let referrer = "";
+    try { referrer = new URL(document.referrer).origin; } catch { /* No external referrer. */ }
+    window.gtag("config", config.gaId, { send_page_view: false, allow_google_signals: false,
+      allow_ad_personalization_signals: false, page_location: config.gaPage.location,
+      page_title: config.gaPage.title, page_referrer: referrer, debug_mode: Boolean(config.gaDebug) });
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(config.gaId)}`;
+    document.head.appendChild(script);
+  }
+
+  function analytics(name, data = {}) {
+    if (!allowed || !config.gaId || !config.gaPage || !window.gtag) return;
+    window.gtag("event", name, { ...data, send_to: config.gaId,
+      page_location: config.gaPage.location, page_title: config.gaPage.title });
+  }
+
   function pixel(type, data = {}, eventId) {
     if (!allowed || !config.pixelId || !window.fbq) return;
+    const { items, ...metaData } = data;
     const standard = ["PageView", "ViewContent", "InitiateCheckout", "Purchase"].includes(type);
-    window.fbq(standard ? "track" : "trackCustom", type, data, { eventID: eventId });
+    window.fbq(standard ? "track" : "trackCustom", type, metaData, { eventID: eventId });
   }
 
   async function flush() {
@@ -89,6 +117,11 @@
   }
 
   track("PageView");
+  analytics("page_view");
+  if (config.product) analytics("view_item", { currency: "NPR", value: config.product.value,
+    items: [{ item_id: config.product.id, item_name: config.product.name, price: config.product.value, quantity: 1 }] });
+  if (config.page === "checkout" && config.checkout) analytics("begin_checkout", {
+    currency: "NPR", value: config.checkout.value, items: config.checkout.items });
   if (config.product) track("ViewContent", config.product.id, {
     content_ids: [config.product.id], content_type: "product", value: config.product.value, currency: "NPR",
   });
@@ -100,6 +133,15 @@
     const key = `motoparts-meta-purchase:${config.pixelId}:${eventId}`;
     if (!storageGet(key)) {
       pixel("Purchase", data, eventId);
+      storageSet(key, "attempted");
+    }
+  }
+
+  if (config.purchase && config.gaId) {
+    const { eventId, value, currency, items, demo_payment } = config.purchase;
+    const key = `motoparts-ga-purchase:${config.gaId}:${eventId}`;
+    if (!storageGet(key)) {
+      analytics("purchase", { transaction_id: eventId, value, currency, items, demo_payment });
       storageSet(key, "attempted");
     }
   }

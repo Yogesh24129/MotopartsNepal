@@ -10,7 +10,10 @@ function marketingConfig() {
   const pixelEnabled = enabled && process.env.META_PIXEL_ENABLED === "true";
   const pixelId = process.env.META_PIXEL_ID || "";
   if (pixelEnabled && !/^\d{5,30}$/.test(pixelId)) throw new Error("META_PIXEL_ID must be a numeric Pixel ID when META_PIXEL_ENABLED=true.");
-  return { enabled, pixelId: pixelEnabled ? pixelId : "",
+  const gaEnabled = enabled && process.env.GA4_ENABLED === "true";
+  const gaId = process.env.GA4_MEASUREMENT_ID || "";
+  if (gaEnabled && !/^G-[A-Z0-9]{6,20}$/.test(gaId)) throw new Error("GA4_MEASUREMENT_ID must be a valid G- Measurement ID when GA4_ENABLED=true.");
+  return { enabled, gaId: gaEnabled ? gaId : "", gaDebug: gaEnabled && process.env.GA4_DEBUG_MODE === "true", pixelId: pixelEnabled ? pixelId : "",
     dashboardEnabled: enabled && (process.env.LAB7_DASHBOARD_ENABLED === "true" ||
       (process.env.LAB7_DASHBOARD_ENABLED !== "false" && process.env.NODE_ENV !== "production")) };
 }
@@ -24,6 +27,7 @@ function purchaseData(req, order) {
       order.marketingVisitor !== req.session.marketingVisitor || order.paymentStatus !== "paid") return null;
   return { eventId: purchaseEventId(order), value: order.total, currency: "NPR",
     content_ids: order.items.map((item) => String(item.product)), content_type: "product",
+    items: order.items.map((item) => ({ item_id: String(item.product), item_name: item.name, price: item.price, quantity: item.quantity })),
     num_items: order.items.reduce((sum, item) => sum + item.quantity, 0), demo_payment: order.paymentMethod === "card" };
 }
 
@@ -33,6 +37,7 @@ function exposeMarketing(req, res, next) {
   res.locals.marketingConsent = req.session.marketingConsent || "unknown";
   res.locals.marketingReturnTo = req.path;
   res.locals.marketingPage = null;
+  res.locals.gaPage = null;
   res.locals.marketingProduct = null;
   res.locals.marketingPurchase = null;
   res.locals.serializeMarketing = (value) => JSON.stringify(value).replace(/</g, "\\u003c");

@@ -134,3 +134,42 @@ test("account, wallet and dashboard pages do not initialize external tracking", 
   assert.equal(fixture.window.document.querySelector('script[src*="facebook.net"]'), null);
   assert.equal(fixture.requests.length, 0);
 });
+
+test("GA4 loads only with consent and a measured page, and sends one sanitized page view", (t) => {
+  const ga = { gaId: "G-TEST123456", gaPage: { location: "http://localhost:3000/", title: "Catalog" } };
+  for (const override of [{ consent: "unknown" }, { consent: "denied" }, { enabled: false }, { page: null }]) {
+    const fixture = browser(t, { ...ga, ...override });
+    assert.equal(fixture.window.gtag, undefined);
+    assert.equal(fixture.window.document.querySelector('script[src*="googletagmanager"]'), null);
+  }
+  const fixture = browser(t, ga);
+  const calls = Array.from(fixture.window.dataLayer, (args) => Array.from(args));
+  assert.equal(calls[0][0], "consent");
+  assert.equal(calls[0][2].analytics_storage, "denied");
+  const setup = calls.find((call) => call[0] === "config")[2];
+  assert.equal(setup.send_page_view, false);
+  assert.equal(setup.allow_google_signals, false);
+  assert.equal(setup.page_location, ga.gaPage.location);
+  assert.equal(setup.page_referrer, "");
+  assert.equal(calls.filter((call) => call[1] === "page_view").length, 1);
+  fixture.window.dispatchEvent(new fixture.window.StorageEvent("storage", {
+    key: "motoparts-marketing-consent", newValue: "denied",
+  }));
+  assert.equal(fixture.window["ga-disable-G-TEST123456"], true);
+  assert.equal(fixture.window.dataLayer.at(-1)[2].analytics_storage, "denied");
+});
+
+test("GA4 purchase uses public items and a stable ID independently of Meta", (t) => {
+  const gaId = "G-TEST123456";
+  const purchase = { eventId: "purchase-safe", value: 100, currency: "NPR", items: [{ item_id: productId, quantity: 1 }], demo_payment: true };
+  const config = { page: "receipt", gaId, gaPage: { location: "http://localhost:3000/purchase-complete", title: "Purchase status" },
+    pixelId: "123456789012345", purchase };
+  const first = browser(t, config);
+  const calls = Array.from(first.window.dataLayer, (args) => Array.from(args));
+  const event = calls.find((call) => call[1] === "purchase")[2];
+  assert.equal(event.transaction_id, "purchase-safe");
+  assert.equal(event.items[0].item_id, productId);
+  assert.equal(first.calls().find((call) => call[1] === "Purchase")[2].items, undefined);
+  const reload = browser(t, config, { [`motoparts-ga-purchase:${gaId}:purchase-safe`]: "attempted" });
+  assert.equal(Array.from(reload.window.dataLayer).filter((call) => call[1] === "purchase").length, 0);
+});

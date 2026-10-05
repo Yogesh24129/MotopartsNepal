@@ -15,6 +15,9 @@ process.env.SESSION_SECRET = "test-only-session-secret";
 process.env.MARKETING_ENABLED = "true";
 process.env.META_PIXEL_ENABLED = "false";
 process.env.META_PIXEL_ID = "";
+process.env.GA4_ENABLED = "false";
+process.env.GA4_MEASUREMENT_ID = "";
+process.env.SITE_INDEXING_ENABLED = "true";
 process.env.LAB7_DASHBOARD_ENABLED = "true";
 process.env.GMAIL_USER = "";
 process.env.GMAIL_APP_PASSWORD = "";
@@ -516,6 +519,9 @@ test("Lab 7 validates Pixel IDs, supports disabling measurement, and prevents co
   } finally {
     process.env.META_PIXEL_ENABLED = "false";
     process.env.META_PIXEL_ID = "";
+process.env.GA4_ENABLED = "false";
+process.env.GA4_MEASUREMENT_ID = "";
+process.env.SITE_INDEXING_ENABLED = "true";
     process.env.MARKETING_ENABLED = "true";
   }
 });
@@ -576,4 +582,65 @@ test("Lab 7 demo journey wires rendered browser events through to paid-order das
   assert.equal(metrics.counts.InitiateCheckout, 1);
   assert.equal(metrics.ctr, 50);
   await agent.get("/marketing/dashboard").expect(200);
+});
+
+test("SEO renders trusted canonicals, public product schema and descriptive alt text", async () => {
+  const part = await product();
+  const home = await request(app).get("/").set("Host", "evil.example").expect(200);
+  const { JSDOM } = require("jsdom");
+  const document = new JSDOM(home.text).window.document;
+  assert.equal(document.querySelector('link[rel="canonical"]').href, "http://localhost:3000/");
+  assert.match(document.title, /Motorcycle Spare Parts in Nepal/);
+  assert.equal(home.headers["x-robots-tag"], "index,follow");
+  const page = await request(app).get(`/product/${part.slug}`).expect(200);
+  const productDocument = new JSDOM(page.text).window.document;
+  const schema = JSON.parse(productDocument.querySelector('script[type="application/ld+json"]').textContent);
+  assert.equal(schema[0].offers.price, "100.00");
+  assert.equal(schema[0].offers.availability, "https://schema.org/InStock");
+  assert.equal(productDocument.querySelector('meta[property="og:image:alt"]').content, "Brake Pad by Test");
+  assert.match(page.text, /alt="Brake Pad by Test"/);
+  const category = await request(app).get("/?category=Brakes").expect(200);
+  assert.match(category.text, /http:\/\/localhost:3000\/\?category=Brakes/);
+});
+
+test("search and private pages are excluded while sitemap lists only public URLs", async () => {
+  await product();
+  const search = await request(app).get("/?q=private-search").expect(200);
+  assert.equal(search.headers["x-robots-tag"], "noindex,follow");
+  const login = await request(app).get("/auth/login").expect(200);
+  assert.match(login.headers["x-robots-tag"], /noindex/);
+  assert.ok(!login.text.includes('type="application/ld+json"'));
+  const sitemap = await request(app).get("/sitemap.xml").expect(200);
+  const { JSDOM } = require("jsdom");
+  const xml = new JSDOM(sitemap.text, { contentType: "application/xml" }).window.document;
+  const locations = Array.from(xml.querySelectorAll("loc"), (node) => node.textContent);
+  assert.deepEqual(locations, ["http://localhost:3000/", "http://localhost:3000/?category=Brakes", "http://localhost:3000/product/brake-pad"]);
+  const robots = await request(app).get("/robots.txt").expect(200);
+  assert.match(robots.text, /Sitemap: http:\/\/localhost:3000\/sitemap.xml/);
+  process.env.SITE_INDEXING_ENABLED = "false";
+  try {
+    assert.equal((await request(app).get("/")).headers["x-robots-tag"], "noindex,follow");
+    assert.ok(!(await request(app).get("/sitemap.xml")).text.includes("<url>"));
+  } finally { process.env.SITE_INDEXING_ENABLED = "true"; }
+});
+
+test("SEO JSON safely escapes script terminators and analytics configuration validates IDs", () => {
+  const { serializeJsonLd, gaPage, siteConfig } = require("../services/seo");
+  const { marketingConfig } = require("../services/marketing");
+  const data = { name: '</script><script>alert(1)</script>' };
+  assert.ok(!serializeJsonLd(data).includes("<"));
+  assert.deepEqual(JSON.parse(serializeJsonLd(data)), data);
+  assert.equal(gaPage("receipt").location, "http://localhost:3000/purchase-complete");
+  process.env.GA4_ENABLED = "true";
+  try {
+    assert.throws(marketingConfig, /Measurement ID/);
+    process.env.GA4_MEASUREMENT_ID = "G-TEST123456";
+    assert.equal(marketingConfig().gaId, "G-TEST123456");
+    process.env.APP_BASE_URL = "https://example.com/private";
+    assert.throws(siteConfig, /origin/);
+  } finally {
+    process.env.GA4_ENABLED = "false";
+    process.env.GA4_MEASUREMENT_ID = "";
+    process.env.APP_BASE_URL = "http://localhost:3000";
+  }
 });

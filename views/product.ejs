@@ -1,9 +1,14 @@
 <%- include('partials/header') %>
 
-<div class="container">
+<main class="container">
+  <nav class="product-breadcrumbs" aria-label="Breadcrumb">
+    <a href="/">Motorcycle parts</a><span aria-hidden="true"> / </span>
+    <a href="/?category=<%= encodeURIComponent(product.category) %>"><%= product.category %></a><span aria-hidden="true"> / </span>
+    <span aria-current="page"><%= product.name %></span>
+  </nav>
   <div class="product-detail">
     <div class="thumb-large">
-      <img src="<%= product.image %>" alt="<%= product.name %>">
+      <img src="<%= product.image %>" alt="<%= product.name %> by <%= product.brand %>" decoding="async">
     </div>
     <div>
       <div class="brand-tag" style="text-transform:uppercase;color:#9a9da3;font-weight:700;font-size:0.8rem;"><%= product.brand %></div>
@@ -39,6 +44,6 @@
       <p style="margin-top:20px;"><a href="/" class="btn-outline btn btn-sm">&larr; Back to all parts</a></p>
     </div>
   </div>
-</div>
+</main>
 
 <%- include('partials/footer') %>

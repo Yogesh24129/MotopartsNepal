@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Product = require("../models/Product");
+const { catalogSEO, productSEO, gaPage } = require("../services/seo");
 
 // Home page - product listing with optional category/search filter
 router.get("/", async (req, res, next) => {
@@ -17,7 +18,10 @@ router.get("/", async (req, res, next) => {
     const products = await Product.find(filter).sort({ createdAt: -1 });
     const categories = await Product.distinct("category");
 
+    const seo = catalogSEO(category, Boolean(q), categories.includes(category));
+    res.set("X-Robots-Tag", seo.robots);
     res.render("index", {
+      seo, gaPage: gaPage("catalog", seo),
       title: "MotoParts Nepal — Genuine Motorcycle Parts",
       products,
       marketingPage: "catalog",
@@ -37,8 +41,10 @@ router.get("/product/:slug", async (req, res, next) => {
     if (!product) {
       return res.status(404).render("404", { title: "Part not found" });
     }
-    res.render("product", { title: product.name, product, marketingPage: "product",
-      marketingProduct: { id: String(product._id), value: product.price, currency: "NPR" } });
+    const seo = productSEO(product);
+    res.set("X-Robots-Tag", seo.robots);
+    res.render("product", { seo, gaPage: gaPage("product", seo, product), title: product.name, product, marketingPage: "product",
+      marketingProduct: { id: String(product._id), name: product.name, value: product.price, currency: "NPR" } });
   } catch (err) {
     next(err);
   }

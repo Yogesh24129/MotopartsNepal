@@ -1,9 +1,10 @@
 <%- include('partials/header') %>
 
+<main>
 <section class="hero">
   <div class="container">
     <div class="eyebrow">Kathmandu Valley · Genuine &amp; Aftermarket Parts</div>
-    <h1>Keep your bike road-ready with parts built for Nepal's roads.</h1>
+    <h1><%= activeCategory ? activeCategory + ' for motorcycles in Nepal.' : 'Motorcycle spare parts for Nepal’s roads.' %></h1>
     <p>From Pulsar brake pads to monsoon-ready seat covers — browse spare parts sourced for the bikes that actually run here.</p>
   </div>
 </section>
@@ -29,10 +30,10 @@
     </div>
   <% } else { %>
     <div class="product-grid">
-      <% products.forEach(function(p) { %>
+      <% products.forEach(function(p, index) { %>
         <div class="product-card" data-marketing-impression="ProductImpression" data-marketing-target="<%= p._id %>">
           <a href="/product/<%= p.slug %>" class="thumb" data-marketing-click="ProductClick" data-marketing-target="<%= p._id %>">
-            <img src="<%= p.image %>" alt="<%= p.name %>">
+            <img src="<%= p.image %>" alt="<%= p.name %> by <%= p.brand %>" loading="<%= index < 4 ? 'eager' : 'lazy' %>" decoding="async">
           </a>
           <div class="body">
             <div class="brand-tag"><%= p.brand %></div>
@@ -59,4 +60,5 @@
   <% } %>
 </div>
 
+</main>
 <%- include('partials/footer') %>
