@@ -23,6 +23,7 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
   }
   fs.writeFileSync(lock, String(process.pid), { flag: "wx" });
   let database;
+  let phase = "launch";
   try {
     const { MongoMemoryServer } = require("mongodb-memory-server");
     const { MongoClient } = require("mongodb");
@@ -32,6 +33,7 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
       instance: { port, dbPath: directory, replSet: "motoparts-local", ip: "127.0.0.1", storageEngine: "wiredTiger" },
     });
     await database.start(true); // Persistent replica-set members must retain their configured port.
+    phase = "replica-set configuration";
     const client = new MongoClient(`mongodb://127.0.0.1:${port}/?directConnection=true`);
     try {
       await client.connect();
@@ -54,10 +56,17 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
         if (error.code !== 94) throw error;
         await admin.command({ replSetInitiate: { _id: "motoparts-local", members: [{ _id: 0, host: `127.0.0.1:${port}` }] } });
       }
+      phase = "primary election";
       const deadline = Date.now() + 30000;
+      let readyChecks = 0;
       while (true) {
-        try { if ((await admin.command({ hello: 1 })).isWritablePrimary) break; }
+        try {
+          const hello = await admin.command({ hello: 1 });
+          readyChecks = hello.isWritablePrimary ? readyChecks + 1 : 0;
+          if (readyChecks >= 3) break;
+        }
         catch (error) {
+          readyChecks = 0;
           if (error.name !== "MongoNetworkError" && ![91, 11600, 11602, 10107, 13435].includes(error.code)) throw error;
         }
         if (Date.now() > deadline) throw new Error("Local MongoDB did not become ready within 30 seconds.");
@@ -71,6 +80,7 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
   } catch (error) {
     if (database) await database.stop({ doCleanup: false }).catch(() => {});
     fs.rmSync(lock, { force: true });
+    error.message = `Local database ${phase} failed: ${error.message}`;
     throw error;
   }
 }

@@ -36,6 +36,7 @@ test("local MongoDB preserves catalog and transaction data across restarts witho
   const port = listener.address().port;
   await new Promise((resolve) => listener.close(resolve));
   let database;
+  let phase = "first startup";
   try {
     database = await startLocalDatabase({ directory: root, port });
     await mongoose.connect(database.uri);
@@ -51,16 +52,23 @@ test("local MongoDB preserves catalog and transaction data across restarts witho
     await session.endSession();
     const saved = await Product.findOne({ stock: 7 });
     await mongoose.disconnect();
+    phase = "first shutdown";
     await database.stop();
+    phase = "restart";
     const nextPort = net.createServer();
     await new Promise((resolve) => nextPort.listen(0, "127.0.0.1", resolve));
     const changedPort = nextPort.address().port;
     await new Promise((resolve) => nextPort.close(resolve));
     database = await startLocalDatabase({ directory: root, port: changedPort });
+    phase = "connect after restart";
     await mongoose.connect(database.uri);
+    phase = "read catalog after restart";
     await seedProducts();
     assert.equal(await Product.countDocuments(), count);
     assert.equal((await Product.findById(saved._id)).stock, 7);
+  } catch (error) {
+    error.message = `Persistence test ${phase}: ${error.message}`;
+    throw error;
   } finally {
     await mongoose.disconnect();
     if (database) await database.stop();
