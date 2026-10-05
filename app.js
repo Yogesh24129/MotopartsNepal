@@ -8,16 +8,18 @@ const morgan = require("morgan");
 const { exposeCartCount, exposeCurrentUser } = require("./middleware/cart");
 const { exposeNotificationCount } = require("./middleware/notifications");
 const { csrfProtection } = require("./middleware/csrf");
+const { exposeMarketing, marketingConfig } = require("./services/marketing");
 
 function createApp(options = {}) {
   const app = express();
+  const marketing = marketingConfig();
   const production = process.env.NODE_ENV === "production";
   if (production && !process.env.SESSION_SECRET) throw new Error("SESSION_SECRET is required in production.");
   if (process.env.TRUST_PROXY === "1") app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.set("view engine", "ejs");
   app.set("views", path.join(__dirname, "views"));
-  Object.assign(app.locals, { currentUser: null, cartCount: 0, notificationCount: 0, success: [], error: [], csrfToken: "" });
+  Object.assign(app.locals, { currentUser: null, cartCount: 0, notificationCount: 0, success: [], error: [], csrfToken: "", marketing, marketingConsent: "unknown", marketingPage: null, marketingProduct: null, marketingPurchase: null, marketingReturnTo: "/", serializeMarketing: (value) => JSON.stringify(value).replace(/</g, "\\u003c") });
   if (options.logging !== false) app.use(morgan("dev"));
   app.use(express.urlencoded({ extended: false, limit: "20kb" }));
   app.use(express.json({ limit: "20kb" }));
@@ -39,6 +41,7 @@ function createApp(options = {}) {
   app.use(exposeCartCount);
   app.use(exposeCurrentUser);
   app.use(exposeNotificationCount);
+  app.use(exposeMarketing);
   app.use("/", require("./routes/products"));
   app.use("/cart", require("./routes/cart"));
   app.use("/checkout", require("./routes/checkout"));
@@ -46,6 +49,7 @@ function createApp(options = {}) {
   app.use("/wallet", require("./routes/wallet"));
   app.use("/auth", require("./routes/auth"));
   app.use("/notifications", require("./routes/notifications"));
+  app.use("/marketing", require("./routes/marketing"));
   app.use((req, res) => res.status(404).render("404", { title: "Page not found" }));
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);

@@ -20,6 +20,7 @@ router.get("/", async (req, res, next) => {
     res.render("index", {
       title: "MotoParts Nepal — Genuine Motorcycle Parts",
       products,
+      marketingPage: "catalog",
       categories,
       activeCategory: category || "",
       query: q || "",
@@ -36,7 +37,8 @@ router.get("/product/:slug", async (req, res, next) => {
     if (!product) {
       return res.status(404).render("404", { title: "Part not found" });
     }
-    res.render("product", { title: product.name, product });
+    res.render("product", { title: product.name, product, marketingPage: "product",
+      marketingProduct: { id: String(product._id), value: product.price, currency: "NPR" } });
   } catch (err) {
     next(err);
   }

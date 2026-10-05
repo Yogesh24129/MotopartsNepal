@@ -1,0 +1,47 @@
+<%- include('partials/header') %>
+<main class="container marketing-dashboard">
+  <div class="marketing-dashboard-heading">
+    <div><div class="eyebrow">Lab 7 · Digital Marketing Tools</div><h1>From a first look to a paid order.</h1>
+      <p>Website measurement for your current browser session · last 30 days.</p></div>
+    <span class="marketing-mode"><%= marketing.pixelId ? 'Meta Pixel configured' : 'Local demo · no Meta connection' %></span>
+  </div>
+  <% if (marketingConsent !== 'granted') { %>
+    <div class="marketing-notice">Measurement is <%= marketingConsent === 'denied' ? 'declined' : 'waiting for your choice' %>.
+      Allow it in the footer, then browse the store to collect your demo results.</div>
+  <% } %>
+  <div class="marketing-metrics">
+    <article><span>Website impressions</span><strong><%= metrics.impressions %></strong><p>Product cards and store promotion seen.</p></article>
+    <article><span>Clicks</span><strong><%= metrics.clicks %></strong><p>Product links and promotion clicks.</p></article>
+    <article><span>Conversions</span><strong><%= metrics.conversions %></strong><p>Confirmed paid orders, counted once.</p></article>
+    <article><span>Order value</span><strong>Rs. <%= metrics.revenue.toLocaleString('en-IN') %></strong><p>Includes simulated card purchases.</p></article>
+  </div>
+  <div class="marketing-rates">
+    <p><strong>Click-through rate: <%= metrics.ctr.toFixed(1) %>%</strong><br>Clicks ÷ website impressions × 100.</p>
+    <p><strong>Checkout conversion rate: <%= metrics.conversionRate.toFixed(1) %>%</strong><br>Paid orders ÷ checkout page views × 100.</p>
+  </div>
+  <p class="marketing-note">These are website demo events, not paid-ad delivery statistics or a Meta delivery receipt.
+    Repeated clicks and visits can affect the ratios. Your session’s counts are private to this browser.</p>
+  <div class="marketing-actions"><a href="/" class="btn btn-primary">Browse and test events</a><a href="/marketing/dashboard" class="btn btn-outline">Refresh results</a></div>
+  <h2>Event totals</h2>
+  <div class="marketing-table-wrap"><table class="cart-table">
+    <thead><tr><th>Event</th><th>Count</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <% const definitions = { PageView: 'A measured store page opened', ProductImpression: 'At least 50% of a product card visible, once per page', PromotionImpression: 'At least 50% of the store promotion visible, once per page', ProductClick: 'A product link clicked', PromotionClick: 'The store promotion clicked', ViewContent: 'A product detail page opened', InitiateCheckout: 'The checkout page opened' }; %>
+      <% Object.entries(definitions).forEach(function([name, description]) { %><tr><td><%= name %></td><td><%= metrics.counts[name] || 0 %></td><td><%= description %></td></tr><% }) %>
+      <tr><td>Purchase</td><td><%= metrics.conversions %></td><td>Server-confirmed paid order; refreshes and callback retries do not add conversions</td></tr>
+    </tbody>
+  </table></div>
+  <h2>Recent events</h2>
+  <% if (!metrics.recent.length) { %><div class="marketing-notice">No events yet. Allow measurement, view the promotion and products, click a product, then complete a dummy card purchase.</div>
+  <% } else { %>
+    <div class="marketing-table-wrap"><table class="cart-table">
+      <thead><tr><th>Time</th><th>Event</th><th>Target / value</th></tr></thead><tbody>
+        <% metrics.recent.forEach(function(event) { %>
+          <tr><td><%= new Date(event.createdAt).toLocaleString('en-GB', { timeZone: 'Asia/Kathmandu' }) %> NPT</td><td><%= event.type %></td>
+            <td><%= event.type === 'Purchase' ? 'Rs. ' + event.value + (event.simulated ? ' · simulated card' : ' · eSewa') : event.targetId || event.page %></td></tr>
+        <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</main>
+<%- include('partials/footer') %>

@@ -16,6 +16,8 @@ const orderSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     guestOwner: { type: String },
+    marketingVisitor: { type: String, index: true },
+    paidAt: { type: Date },
     items: [orderItemSchema],
     fulfillmentStatus: { type: String, enum: ["unfulfilled", "allocated", "stock_review"], default: "unfulfilled" },
     customer: {

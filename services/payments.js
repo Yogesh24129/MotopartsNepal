@@ -17,6 +17,7 @@ async function finalizeOrder(orderId, status, transactionId, options = {}) {
     if (status === "failed" && order.paymentStatus === "failed") return { order, changed: false };
 
     if (status === "paid") {
+      order.paidAt = new Date();
       const products = await Product.find({ _id: { $in: order.items.map((item) => item.product) } }).session(session);
       const stock = new Map(products.map((product) => [String(product._id), product.stock]));
       const available = order.items.every((item) => Number.isSafeInteger(item.quantity) && item.quantity > 0 &&

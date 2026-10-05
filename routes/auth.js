@@ -4,10 +4,12 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 
 async function establishLogin(req, user) {
-  const { cart, checkoutOwner } = req.session;
+  const { cart, checkoutOwner, marketingConsent, marketingVisitor } = req.session;
   await new Promise((resolve, reject) => req.session.regenerate((error) => error ? reject(error) : resolve()));
   req.session.cart = cart;
   req.session.checkoutOwner = checkoutOwner;
+  req.session.marketingConsent = marketingConsent;
+  req.session.marketingVisitor = marketingVisitor;
   req.session.userId = String(user._id);
 }
 

@@ -6,7 +6,7 @@ shopping cart, guest/account checkout, payment receipts, wallets and notificatio
 
 ## Requirements and setup
 
-Use Node.js 22 or newer and a **MongoDB replica set or MongoDB Atlas cluster**.
+Use Node.js 22.13+ or 24+ and a **MongoDB replica set or MongoDB Atlas cluster**.
 Payment/inventory updates and wallet transfers use MongoDB transactions; a standalone
 MongoDB server cannot support those transactions, and startup reports that requirement.
 
@@ -118,3 +118,83 @@ and configure `TRUST_PROXY=1` only behind one trusted reverse proxy. The card ro
 remains a simulation; replace it with a verified provider integration before accepting
 real card payments. Admin fulfillment, refunds, a durable messaging queue and account
 recovery remain future work.
+
+## Lab 7 — Digital Marketing Tools
+
+The site integrates **Meta (Facebook) Pixel** with a local demo dashboard at
+`/marketing/dashboard`. A Pixel ID is not needed for the local lab demonstration.
+The footer exposes the dashboard link in development, plus allow/decline controls.
+Measurement starts only after consent. Declining stops new events and clears the
+current session's local marketing events and order associations.
+
+The default `.env.example` keeps `META_PIXEL_ENABLED=false` and `META_PIXEL_ID` blank.
+No Meta script or tracking image loads in this mode, and no events are sent to Meta.
+The dashboard shows only this browser session, making it usable for a lab without
+exposing another customer's data. Set `LAB7_DASHBOARD_ENABLED=false` for deployment;
+the dashboard is off by default in production unless explicitly enabled.
+
+| Metric / event | Trigger |
+| --- | --- |
+| `ProductImpression` | At least 50% of a catalog product card becomes visible; once per page load |
+| `PromotionImpression` | At least 50% of the store's riding-gear promotion becomes visible; once per page load |
+| `ProductClick` / `PromotionClick` | A product link or store promotion link is clicked |
+| `PageView` | A consenting visitor opens the catalog, product, checkout or receipt page |
+| `ViewContent` | A product detail page opens |
+| `InitiateCheckout` | Checkout opens |
+| `Purchase` | The server confirms an order is paid; failed payments and receipt reloads do not count |
+
+Website impressions are not Meta ad-delivery impressions. The store promotion is a
+first-party demo banner, not a paid Meta advertisement. The dashboard reports event
+counts, click-through rate (`clicks / impressions`) and checkout conversion rate
+(`paid orders / checkout page views`), plus order value in NPR. Simulated card orders
+are clearly identified. These ratios describe this demo session, not unique-user
+campaign attribution. Event documents expire after 30 days, and dashboard queries
+cover the last 30 days. Purchase totals come directly from paid order records.
+Browser-submitted `Purchase` events are rejected.
+
+### Lab demonstration
+
+1. Open the store and choose **Allow measurement** in the footer.
+2. Scroll through the catalog until the promotion and product cards are visible.
+3. Click **Shop riding gear** or a product image/name.
+4. Add an item, open checkout, and complete a **dummy card** payment with a future
+   expiry and a number that does not end in `0000`.
+5. Open **Lab 7 · Marketing dashboard** in the same browser session and refresh it.
+   Show impressions, clicks, one conversion, order value, rates and recent events.
+6. Reload the receipt and show that conversions remain one. Try a declined payment
+   to show that it does not become a conversion.
+7. Choose **Decline / withdraw** and show that local history clears and tracking stops.
+
+`window.motopartsMarketing` in browser developer tools exposes the mode and recent
+browser events for debugging. The dashboard's conversions remain server-confirmed.
+JavaScript and IntersectionObserver must be available for viewability measurement.
+Ad blockers or failed requests can reduce browser event counts; purchases can be
+confirmed even if browser tracking is blocked.
+
+### Connect a real demo Pixel later
+
+Create a Pixel/data source in your own Meta Events Manager, copy its numeric Pixel ID,
+and configure:
+
+```dotenv
+MARKETING_ENABLED=true
+META_PIXEL_ENABLED=true
+META_PIXEL_ID=YOUR_NUMERIC_PIXEL_ID
+```
+
+Restart the app and explicitly allow measurement. The browser then loads the Meta
+Pixel library and dispatches standard `PageView`, `ViewContent`, `InitiateCheckout`
+and `Purchase` events, plus custom impression/click events. Customer names, email,
+phone, addresses and card details are excluded from our event parameters. Automatic
+Pixel configuration is disabled; advanced matching is not configured. Meta can still
+receive page URLs and browser information as part of its own library's operation.
+Sensitive account and wallet pages do not initialize the Pixel.
+
+Use a dedicated demo Pixel and Meta's **Test Events** / **Meta Pixel Helper** to
+verify receipt. A purchase uses a stable event ID and a browser storage marker to
+avoid repeated dispatch on receipt reload. If browser storage is unavailable it may
+be attempted again with the same ID. The local dashboard cannot confirm Meta
+received an event, and this integration does not implement server-side Conversions
+API delivery or a durable retry queue. Withdrawal cannot erase events already sent
+to Meta. Official references: [Meta Pixel implementation](https://developers.facebook.com/docs/meta-pixel/implementation/)
+and [event reference](https://developers.facebook.com/docs/meta-pixel/reference/).

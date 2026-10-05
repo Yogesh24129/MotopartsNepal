@@ -2,7 +2,24 @@
     <div class="container">
       <p><strong>MotoParts Nepal</strong> — genuine and aftermarket motorcycle spare parts, delivered across the Kathmandu Valley.</p>
       <p>College e-commerce lab project. Card payments are simulated. Use the eSewa sandbox configuration for demonstrations.</p>
+      <% if (marketing.dashboardEnabled) { %><p><a href="/marketing/dashboard" class="marketing-footer-link">Lab 7 · Marketing dashboard</a></p><% } %>
+      <% if (marketing.enabled) { %>
+        <details class="marketing-preferences" <%= marketingConsent === 'unknown' ? 'open' : '' %>>
+          <summary>Marketing measurement · <%= marketingConsent === 'granted' ? 'allowed' : marketingConsent === 'denied' ? 'declined' : 'your choice' %></summary>
+          <p>Allow us to measure product views, promotion clicks and completed purchases for this demo.
+            <%= marketing.pixelId ? 'Meta Pixel will also receive browsing and purchase events, page URLs and browser information.' : 'Events stay in this site’s demo dashboard. No Meta Pixel is connected.' %>
+            Your checkout contact details are excluded. Declining also clears this session’s local marketing history.</p>
+          <form action="/marketing/consent" method="POST">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="returnTo" value="<%= marketingReturnTo %>">
+            <button class="btn btn-primary btn-sm" name="choice" value="granted">Allow measurement</button>
+            <button class="btn btn-outline btn-sm" name="choice" value="denied">Decline / withdraw</button>
+          </form>
+        </details>
+      <% } %>
     </div>
   </footer>
+  <script type="application/json" id="marketing-config"><%- serializeMarketing({ enabled: marketing.enabled, pixelId: marketing.pixelId, consent: marketingConsent, csrfToken, page: marketingPage, product: marketingProduct, purchase: marketingPurchase, checkout: typeof marketingCheckout !== 'undefined' ? marketingCheckout : null }) %></script>
+  <script src="/js/marketing.js" defer></script>
 </body>
 </html>

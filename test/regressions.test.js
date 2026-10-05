@@ -12,6 +12,10 @@ process.env.ESEWA_GATEWAY_URL = "https://gateway.example.test/form";
 process.env.ESEWA_STATUS_URL = "https://gateway.example.test/status";
 process.env.APP_BASE_URL = "http://localhost:3000";
 process.env.SESSION_SECRET = "test-only-session-secret";
+process.env.MARKETING_ENABLED = "true";
+process.env.META_PIXEL_ENABLED = "false";
+process.env.META_PIXEL_ID = "";
+process.env.LAB7_DASHBOARD_ENABLED = "true";
 process.env.GMAIL_USER = "";
 process.env.GMAIL_APP_PASSWORD = "";
 process.env.TWILIO_ACCOUNT_SID = "";
@@ -23,6 +27,7 @@ const Product = require("../models/Product");
 const Order = require("../models/Order");
 const Wallet = require("../models/Wallet");
 const Transaction = require("../models/Transaction");
+const MarketingEvent = require("../models/MarketingEvent");
 const { generateOrderHash } = require("../utils/hash");
 const { finalizeOrder } = require("../services/payments");
 const { transfer, completeTopup, getOrCreateWallet } = require("../services/wallets");
@@ -361,4 +366,214 @@ test("pending gateway verification preserves pending order state", async () => {
     assert.equal((await Order.findById(order._id)).paymentStatus, "pending");
     assert.equal((await Product.findById(part._id)).stock, 10);
   } finally { global.fetch = originalFetch; }
+});
+
+async function consent(agent, choice = "granted") {
+  const page = await agent.get("/").expect(200);
+  await agent.post("/marketing/consent").send({ _csrf: token(page), choice, returnTo: "/" }).expect(303);
+  return token(await agent.get("/"));
+}
+function marketingConfigFrom(response) {
+  const match = response.text.match(/<script type="application\/json" id="marketing-config">([\s\S]*?)<\/script>/);
+  assert.ok(match);
+  return JSON.parse(match[1]);
+}
+
+test("Lab 7 defaults to local-only measurement and rejects events before consent", async () => {
+  const agent = request.agent(app);
+  const page = await agent.get("/");
+  const config = marketingConfigFrom(page);
+  assert.equal(config.pixelId, "");
+  assert.equal(config.consent, "unknown");
+  await agent.post("/marketing/events").set("x-csrf-token", token(page))
+    .send({ events: [{ type: "PageView", page: "catalog", eventId: crypto.randomUUID() }] }).expect(403);
+  assert.equal(await MarketingEvent.countDocuments(), 0);
+  const dashboard = await agent.get("/marketing/dashboard").expect(200);
+  assert.match(dashboard.text, /Local demo · no Meta connection/);
+});
+
+test("Lab 7 records visible-product and promotion events, deduplicates IDs, and scopes dashboards to the session", async () => {
+  const a = request.agent(app), b = request.agent(app);
+  const part = await product();
+  const csrf = await consent(a);
+  const events = [
+    { eventId: crypto.randomUUID(), type: "PageView", page: "catalog" },
+    { eventId: crypto.randomUUID(), type: "ProductImpression", page: "catalog", targetId: String(part._id) },
+    { eventId: crypto.randomUUID(), type: "ProductClick", page: "catalog", targetId: String(part._id) },
+    { eventId: crypto.randomUUID(), type: "PromotionImpression", page: "catalog", targetId: "lab7-helmets" },
+    { eventId: crypto.randomUUID(), type: "PromotionClick", page: "catalog", targetId: "lab7-helmets" },
+  ];
+  await Promise.all([a.post("/marketing/events").set("x-csrf-token", csrf).send({ events }).expect(204),
+    a.post("/marketing/events").set("x-csrf-token", csrf).send({ events }).expect(204)]);
+  assert.equal(await MarketingEvent.countDocuments(), 5);
+  const { dashboard } = require("../services/marketing");
+  const visitor = (await MarketingEvent.findOne()).visitor;
+  const metrics = await dashboard(visitor);
+  assert.equal(metrics.impressions, 2);
+  assert.equal(metrics.clicks, 2);
+  assert.equal(metrics.ctr, 100);
+  await consent(b);
+  const otherDashboard = await b.get("/marketing/dashboard").expect(200);
+  assert.match(otherDashboard.text, /No events yet/);
+  assert.doesNotMatch(otherDashboard.text, new RegExp(String(part._id)));
+});
+
+test("Lab 7 rejects browser-forged purchases and unknown or oversized event batches", async () => {
+  const agent = request.agent(app), csrf = await consent(agent);
+  for (const event of [
+    { eventId: crypto.randomUUID(), type: "Purchase", page: "receipt", value: 9999 },
+    { eventId: crypto.randomUUID(), type: "ProductClick", page: "catalog", targetId: "not-a-product" },
+    { eventId: crypto.randomUUID(), type: "PromotionClick", page: "catalog", targetId: "unknown" },
+  ]) await agent.post("/marketing/events").set("x-csrf-token", csrf).send({ events: [event] }).expect(400);
+  await agent.post("/marketing/events").set("x-csrf-token", csrf).send({ events: Array.from({ length: 26 }, () =>
+    ({ eventId: crypto.randomUUID(), type: "PageView", page: "catalog" })) }).expect(400);
+  assert.equal(await MarketingEvent.countDocuments(), 0);
+});
+
+test("Lab 7 counts paid purchases once across retries and receipt reloads, using server amounts", async () => {
+  const agent = request.agent(app);
+  const part = await product();
+  const csrf = await consent(agent);
+  await agent.post("/marketing/events").set("x-csrf-token", csrf).send({ events: [
+    { eventId: crypto.randomUUID(), type: "InitiateCheckout", page: "checkout" },
+  ] }).expect(204);
+  await agent.post(`/cart/add/${part._id}`).send({ _csrf: csrf, quantity: 2 }).expect(302);
+  await agent.post("/checkout").send({ _csrf: csrf, fullName: "Private Buyer", phone: "9800000000",
+    email: "private@example.com", address: "Private Street", city: "Kathmandu", paymentMethod: "card" }).expect(302);
+  const order = await Order.findOne();
+  assert.ok(order.marketingVisitor);
+  await cardPost(agent, order, "4111111111110000");
+  const { dashboard } = require("../services/marketing");
+  assert.equal((await dashboard(order.marketingVisitor)).conversions, 0);
+  await cardPost(agent, order);
+  const paid = await Order.findById(order._id);
+  const paidAt = paid.paidAt.getTime();
+  await finalizeOrder(order._id, "paid", "REPLAY", { method: "card" });
+  assert.equal((await Order.findById(order._id)).paidAt.getTime(), paidAt);
+  for (let i = 0; i < 2; i++) {
+    const page = await agent.get(`/payment/status/${order._id}`).expect(200);
+    const config = marketingConfigFrom(page);
+    assert.equal(config.purchase.value, 350);
+    assert.equal(config.purchase.currency, "NPR");
+    const serialized = JSON.stringify(config);
+    for (const privateValue of ["Private Buyer", "Private Street", "private@example.com", "9800000000"]) {
+      assert.ok(!serialized.includes(privateValue));
+    }
+  }
+  const metrics = await dashboard(order.marketingVisitor);
+  assert.equal(metrics.conversions, 1);
+  assert.equal(metrics.revenue, 350);
+  assert.equal(metrics.conversionRate, 100);
+  assert.equal(await MarketingEvent.countDocuments({ type: "Purchase" }), 0);
+});
+
+test("withdrawing marketing consent deletes local events and unlinks orders, and blocks future events", async () => {
+  const { agent, user } = await account();
+  const csrf = await consent(agent);
+  await agent.post("/marketing/events").set("x-csrf-token", csrf).send({ events: [
+    { eventId: crypto.randomUUID(), type: "PageView", page: "catalog" },
+  ] }).expect(204);
+  const visitor = (await MarketingEvent.findOne()).visitor;
+  const order = await orderFor(user, await product());
+  await Order.updateOne({ _id: order._id }, { marketingVisitor: visitor });
+  await consent(agent, "denied");
+  assert.equal(await MarketingEvent.countDocuments(), 0);
+  assert.equal((await Order.findById(order._id)).marketingVisitor, undefined);
+  const page = await agent.get("/");
+  await agent.post("/marketing/events").set("x-csrf-token", token(page)).send({ events: [
+    { eventId: crypto.randomUUID(), type: "PageView", page: "catalog" },
+  ] }).expect(403);
+  assert.equal(marketingConfigFrom(page).consent, "denied");
+});
+
+test("consent survives session rotation at registration without leaking into another session", async () => {
+  const agent = request.agent(app);
+  const csrf = await consent(agent);
+  await agent.post("/auth/register").send({ _csrf: csrf, name: "Buyer", email: "buyer@example.com",
+    password: "Testing123!", confirmPassword: "Testing123!" }).expect(302);
+  assert.equal(marketingConfigFrom(await agent.get("/")).consent, "granted");
+  assert.equal(marketingConfigFrom(await request(app).get("/")).consent, "unknown");
+});
+
+test("Lab 7 validates Pixel IDs, supports disabling measurement, and prevents consent open redirects", async () => {
+  const agent = request.agent(app), csrf = await consent(agent);
+  const response = await agent.post("/marketing/consent").send({ _csrf: csrf, choice: "granted",
+    returnTo: "//example.com" }).expect(303);
+  assert.equal(response.headers.location, "/");
+  const { marketingConfig } = require("../services/marketing");
+  try {
+    process.env.META_PIXEL_ENABLED = "true";
+    process.env.META_PIXEL_ID = "<script>";
+    assert.throws(marketingConfig, /numeric Pixel ID/);
+    process.env.META_PIXEL_ID = "123456789012345";
+    assert.equal(marketingConfig().pixelId, "123456789012345");
+    process.env.MARKETING_ENABLED = "false";
+    assert.equal(marketingConfig().pixelId, "");
+    await agent.post("/marketing/events").set("x-csrf-token", csrf).send({ events: [
+      { eventId: crypto.randomUUID(), type: "PageView", page: "catalog" },
+    ] }).expect(403);
+    await agent.get("/marketing/dashboard").expect(404);
+  } finally {
+    process.env.META_PIXEL_ENABLED = "false";
+    process.env.META_PIXEL_ID = "";
+    process.env.MARKETING_ENABLED = "true";
+  }
+});
+
+test("Lab 7 demo journey wires rendered browser events through to paid-order dashboard metrics", async (t) => {
+  const { JSDOM } = require("jsdom");
+  const fs = require("node:fs"), path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "../public/js/marketing.js"), "utf8");
+  const agent = request.agent(app), part = await product();
+  const csrf = await consent(agent);
+  async function visit(page, interact = () => {}) {
+    const dom = new JSDOM(page.text, { url: "http://localhost:3000/", runScripts: "outside-only", pretendToBeVisual: true });
+    t.after(() => dom.window.close());
+    const pending = [];
+    let observer;
+    dom.window.IntersectionObserver = class {
+      constructor(callback) { this.callback = callback; observer = this; }
+      observe() {} unobserve() {} disconnect() {}
+    };
+    dom.window.fetch = (url, options) => {
+      const result = agent.post(url).set(options.headers).send(JSON.parse(options.body)).then((response) => {
+        assert.equal(response.status, 204);
+        return { status: response.status, ok: true };
+      });
+      pending.push(result);
+      return result;
+    };
+    dom.window.document.addEventListener("click", (event) => event.preventDefault());
+    dom.window.eval(source);
+    interact(dom.window, observer);
+    dom.window.dispatchEvent(new dom.window.Event("pagehide"));
+    await Promise.all(pending);
+  }
+  await visit(await agent.get("/"), (window, observer) => {
+    for (const target of window.document.querySelectorAll("[data-marketing-impression]")) {
+      observer.callback([{ target, isIntersecting: true, intersectionRatio: 0.75 }]);
+    }
+    window.document.querySelector('[data-marketing-click="ProductClick"]').dispatchEvent(new window.MouseEvent("click", {
+      bubbles: true, cancelable: true, button: 0,
+    }));
+  });
+  await visit(await agent.get(`/product/${part.slug}`));
+  await agent.post(`/cart/add/${part._id}`).send({ _csrf: csrf, quantity: 1 }).expect(302);
+  await visit(await agent.get("/checkout"));
+  await agent.post("/checkout").send({ _csrf: csrf, fullName: "Demo Buyer", phone: "9800000000", email: "demo@example.com",
+    address: "Demo Street", city: "Kathmandu", paymentMethod: "card" }).expect(302);
+  const order = await Order.findOne();
+  await cardPost(agent, order);
+  await visit(await agent.get(`/payment/status/${order._id}`));
+  const { dashboard } = require("../services/marketing");
+  const metrics = await dashboard(order.marketingVisitor);
+  assert.equal(metrics.impressions, 2);
+  assert.equal(metrics.clicks, 1);
+  assert.equal(metrics.conversions, 1);
+  assert.equal(metrics.revenue, 250);
+  assert.equal(metrics.counts.PageView, 4);
+  assert.equal(metrics.counts.ViewContent, 1);
+  assert.equal(metrics.counts.InitiateCheckout, 1);
+  assert.equal(metrics.ctr, 50);
+  await agent.get("/marketing/dashboard").expect(200);
 });

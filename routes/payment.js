@@ -11,6 +11,7 @@ const { sendDeliveryConfirmation } = require("../utils/email");
 const { sendWhatsAppConfirmation } = require("../utils/whatsapp");
 const { verifyOrderHash } = require("../utils/hash");
 const { httpError } = require("../utils/validation");
+const { purchaseData } = require("../services/marketing");
 
 // External messages run after the transaction commits and cannot undo payment.
 async function announce(result) {
@@ -100,7 +101,7 @@ router.post("/card/:orderId/process", loadOrder, paymentMethod("card"), async (r
 router.get("/status/:orderId", loadOrder, (req, res) => {
   res.render("payment-status", { title: req.order.paymentStatus === "paid" ? "Payment Successful" :
     req.order.paymentStatus === "pending" ? "Payment Pending" : "Payment Failed", order: req.order,
-    dataIntact: verifyOrderHash(req.order) });
+    dataIntact: verifyOrderHash(req.order), marketingPage: "receipt", marketingPurchase: purchaseData(req, req.order) });
 });
 
 module.exports = router;

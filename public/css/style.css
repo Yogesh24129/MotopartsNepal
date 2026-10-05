@@ -407,3 +407,30 @@ button.cart-link:hover {
   .form-row-inline, .payment-method-choice { grid-template-columns: 1fr; }
   .product-detail { gap: 24px; }
 }
+
+/* ---------------- Lab 7: marketing measurement ---------------- */
+.marketing-promo { margin: 26px 0; padding: 24px; border: 1px solid #e7e3d9; border-left: 5px solid var(--safety-orange); border-radius: var(--radius); background: #fff; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.marketing-promo h2 { font-size: 1.4rem; margin: 4px 0; }
+.marketing-promo p, .marketing-dashboard-heading p { margin: 6px 0 0; color: var(--muted); }
+.marketing-eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.marketing-preferences { margin-top: 20px; max-width: 850px; }
+.marketing-preferences summary { color: #fff; cursor: pointer; }
+.marketing-preferences form { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.marketing-preferences .btn-outline { color: #fff; border-color: #a9acb1; }
+.marketing-footer-link { color: #fff; text-decoration: underline; }
+.marketing-dashboard { padding-top: 38px; }
+.marketing-dashboard-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+.marketing-dashboard-heading h1 { font-size: clamp(1.6rem, 3vw, 2.5rem); margin: 10px 0; }
+.marketing-mode { border: 1px solid #d5d0c5; border-radius: 999px; font-size: .8rem; padding: 8px 12px; white-space: nowrap; }
+.marketing-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 22px 0; }
+.marketing-metrics article { background: #fff; border: 1px solid #e7e3d9; border-radius: var(--radius); padding: 22px; }
+.marketing-metrics article > span { font-size: .8rem; color: var(--muted); }
+.marketing-metrics strong { display: block; font-family: var(--font-display); font-size: 2rem; margin: 8px 0; }
+.marketing-metrics p { font-size: .8rem; color: var(--muted); margin: 0; }
+.marketing-rates { display: flex; gap: 40px; flex-wrap: wrap; }
+.marketing-note { font-size: .85rem; color: var(--muted); max-width: 850px; }
+.marketing-notice { border: 1px solid #e7e3d9; background: #fff8e1; border-radius: var(--radius); padding: 18px; margin: 18px 0; }
+.marketing-actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 24px 0; }
+.marketing-table-wrap { overflow-x: auto; }
+@media (max-width: 900px) { .marketing-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .marketing-dashboard-heading { flex-direction: column; } }
+@media (max-width: 640px) { .marketing-promo { flex-direction: column; align-items: flex-start; } .marketing-metrics { grid-template-columns: 1fr; } }

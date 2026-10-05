@@ -14,7 +14,8 @@ router.get("/", (req, res) => {
     req.flash("error", "Your cart is empty.");
     return res.redirect("/cart");
   }
-  res.render("checkout", { title: "Checkout", ...totals });
+  res.render("checkout", { title: "Checkout", ...totals, marketingPage: "checkout",
+    marketingCheckout: { value: totals.total, currency: "NPR", num_items: totals.itemCount } });
 });
 
 // Create the order (status: pending) then send the customer to the
@@ -57,6 +58,7 @@ router.post("/", async (req, res, next) => {
     const order = new Order({
       user: req.session.userId || undefined,
       guestOwner: req.session.userId ? undefined : req.session.checkoutOwner,
+      marketingVisitor: process.env.MARKETING_ENABLED !== "false" && req.session.marketingConsent === "granted" ? req.session.marketingVisitor : undefined,
       items: totals.items.map((item) => ({
         product: item.productId, name: item.name, price: item.price,
         quantity: item.quantity, image: item.image,
