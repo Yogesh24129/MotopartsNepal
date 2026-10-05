@@ -175,21 +175,18 @@ function slugify(name) {
     .replace(/(^-|-$)/g, "");
 }
 
-async function seed() {
-  try {
-    await mongoose.connect(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/motoparts_nepal");
-    console.log("Connected to MongoDB for seeding...");
-
-    await Product.deleteMany({});
-    const withSlugs = products.map((p) => ({ ...p, slug: slugify(`${p.brand}-${p.name}`) }));
-    await Product.insertMany(withSlugs);
-
-    console.log(`Seeded ${withSlugs.length} products into motoparts_nepal.`);
-    process.exit(0);
-  } catch (err) {
-    console.error("Seeding failed:", err);
-    process.exit(1);
-  }
+async function seedProducts({ replace = false } = {}) {
+  if (!replace && await Product.exists({})) return;
+  if (replace) await Product.deleteMany({});
+  const withSlugs = products.map((p) => ({ ...p, slug: slugify(`${p.brand}-${p.name}`) }));
+  await Product.insertMany(withSlugs);
+  console.log(`Seeded ${withSlugs.length} demo products.`);
 }
 
-seed();
+if (require.main === module) {
+  const connectDB = require("../config/db");
+  connectDB().then(() => seedProducts({ replace: true }))
+    .catch((error) => { console.error("Seeding failed:", error.message); process.exitCode = 1; })
+    .finally(() => mongoose.disconnect());
+}
+module.exports = { seedProducts };

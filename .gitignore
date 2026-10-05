@@ -4,3 +4,5 @@ certs/*.pem
 npm-debug.log
 .DS_Store
 *.log
+
+.local-data/

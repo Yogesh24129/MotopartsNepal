@@ -25,7 +25,7 @@ async function seedWallets() {
 }
 
 if (require.main === module) {
-  mongoose.connect(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/motoparts_nepal?replicaSet=rs0")
+  require("../config/db")()
     .then(seedWallets).catch((error) => { console.error("Wallet seed failed:", error.message); process.exitCode = 1; })
     .finally(() => mongoose.disconnect());
 }

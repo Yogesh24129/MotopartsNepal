@@ -6,28 +6,59 @@ shopping cart, guest/account checkout, payment receipts, wallets and notificatio
 
 ## Requirements and setup
 
-Use Node.js 22.13+ or 24+ and a **MongoDB replica set or MongoDB Atlas cluster**.
-Payment/inventory updates and wallet transfers use MongoDB transactions; a standalone
-MongoDB server cannot support those transactions, and startup reports that requirement.
+Use Node.js 22.13+ or 24+. **Docker and a separate MongoDB installation are not
+required for the local demo.** After cloning, run:
 
 ```sh
 npm ci
-cp .env.example .env
-```
-
-Edit `.env` with a random `SESSION_SECRET`, the MongoDB connection string and
-`APP_BASE_URL` (the browser-accessible origin used for payment callbacks).
-For a local MongoDB replica set, Docker users can run:
-
-```sh
-docker compose up -d --wait
-npm run seed
+npm run setup -- --local
 npm start
 ```
 
 Open http://localhost:3000. `npm run dev` starts the app with automatic reloads.
-The product seed **replaces all products** and is intended for a development database.
-If using Atlas, set its replica-set connection string in `MONGO_URI` and omit Docker.
+The cross-platform setup command creates `.env`, generates a random session secret,
+and selects local mode. It preserves existing credentials and secrets. It also works
+on Windows PowerShell; no `cp`, Docker, WSL or administrator terminal is required.
+If you previously configured this repo for Docker, run the setup command with
+`--local` to switch modes. First install/launch downloads MongoDB and needs internet
+access; allow the download through your firewall if prompted.
+
+The app starts a loopback-only MongoDB replica set on port 27018 using a downloaded
+MongoDB executable. WiredTiger data persists in `.local-data/mongo/` (Git-ignored).
+It seeds 18 demo products only when the local catalog is empty. Existing products,
+accounts and purchase history are preserved when restarting. Keep this folder to
+keep your data; cloning on another device does not transfer it. Stop with Ctrl+C
+before starting another app instance. This managed database is for development only.
+It uses [mongodb-memory-server's local MongoDB launcher](https://typegoose.github.io/mongodb-memory-server/docs/guides/quick-start-guide/)
+with an explicit disk-backed data directory; it does not rely on ephemeral test data.
+
+For a different local database port, set `LOCAL_MONGO_PORT` before the first launch.
+Keep that port unchanged once the database has been initialized, because its replica
+set records the member address. If port 3000 is occupied, change `PORT` and
+`APP_BASE_URL` together. Optional wallet accounts can be added from a second terminal
+with `npm run seed:wallets` while the app is running.
+
+### Atlas or an existing database
+
+For a shared database or deployment, configure `.env` with:
+
+```dotenv
+DB_MODE=external
+MONGO_URI=mongodb+srv://YOUR_USER:YOUR_PASSWORD@YOUR_CLUSTER/motoparts_nepal?retryWrites=true&w=majority
+APP_BASE_URL=http://localhost:3000
+```
+
+Use your actual Atlas connection string, database user and network access settings.
+The database must be an Atlas cluster or a MongoDB replica set: payment/inventory
+updates and wallet transfers require transactions. External mode never automatically
+seeds a catalog. For a fresh demo database only, run `npm run seed` to populate it;
+this manual seed **replaces all products**. Do not run it on existing store data.
+In local mode, manual seeds require the app to be running first.
+
+Docker remains an optional alternative: use `DB_MODE=external`, set
+`MONGO_URI=mongodb://127.0.0.1:27017/motoparts_nepal?replicaSet=rs0`, then run
+`docker compose up -d --wait`. Production rejects `DB_MODE=local`; use your external
+connection with a strong session secret and a public `APP_BASE_URL`.
 
 ## Payments
 

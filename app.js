@@ -5,6 +5,7 @@ const MongoStore = require("connect-mongo");
 const flash = require("connect-flash");
 const methodOverride = require("method-override");
 const morgan = require("morgan");
+const { databaseUri } = require("./config/local-db");
 const { exposeCartCount, exposeCurrentUser } = require("./middleware/cart");
 const { exposeNotificationCount } = require("./middleware/notifications");
 const { csrfProtection } = require("./middleware/csrf");
@@ -35,7 +36,7 @@ function createApp(options = {}) {
   app.use(session({
     secret: process.env.SESSION_SECRET || "motoparts-dev-secret",
     resave: false, saveUninitialized: false,
-    store: options.store || MongoStore.create({ mongoUrl: process.env.MONGO_URI || "mongodb://127.0.0.1:27017/motoparts_nepal?replicaSet=rs0", collectionName: "sessions" }),
+    store: options.store || MongoStore.create({ mongoUrl: databaseUri(), collectionName: "sessions" }),
     cookie: { maxAge: 1000 * 60 * 60 * 24 * 7, httpOnly: true, sameSite: "lax", secure: production },
   }));
   app.use(flash());
