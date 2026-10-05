@@ -3,6 +3,8 @@ const router = express.Router();
 const Order = require("../models/Order");
 const Product = require("../models/Product");
 const crypto = require("crypto");
+const mongoose = require("mongoose");
+const { paymentOptions } = require("../services/payment-options");
 const { httpError } = require("../utils/validation");
 const cartService = require("../middleware/cart");
 const { generateOrderHash } = require("../utils/hash");
@@ -15,7 +17,7 @@ router.get("/", (req, res) => {
     req.flash("error", "Your cart is empty.");
     return res.redirect("/cart");
   }
-  res.render("checkout", { title: "Checkout", ...totals, marketingPage: "checkout", gaPage: gaPage("checkout"),
+  res.render("checkout", { title: "Checkout", paymentOptions: paymentOptions(), ...totals, marketingPage: "checkout", gaPage: gaPage("checkout"),
     marketingCheckout: { value: totals.total, currency: "NPR", num_items: totals.itemCount,
       items: totals.items.map((item) => ({ item_id: item.productId, item_name: item.name, price: item.price, quantity: item.quantity })) } });
 });
@@ -51,7 +53,7 @@ router.post("/", async (req, res, next) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^(?:\+?977)?9\d{9}$/.test(phone.replace(/[\s-]/g, ""))) {
       throw httpError(400, "Enter a valid email and Nepali phone number.");
     }
-    if (!["esewa", "card"].includes(paymentMethod)) {
+    if (!["cod", "esewa", "card"].includes(paymentMethod) || !paymentOptions()[paymentMethod]) {
       req.flash("error", "Please choose a payment method.");
       return res.redirect("/checkout");
     }
@@ -70,6 +72,19 @@ router.post("/", async (req, res, next) => {
       paymentMethod, paymentStatus: "pending",
     });
     order.integrityHash = generateOrderHash(order);
+    if (paymentMethod === "cod") {
+      await mongoose.connection.transaction(async (session) => {
+        for (const item of order.items) {
+          const result = await Product.updateOne({ _id: item.product, stock: { $gte: item.quantity } },
+            { $inc: { stock: -item.quantity } }, { session });
+          if (result.modifiedCount !== 1) throw httpError(409, "Stock changed during checkout. Please review your cart.");
+        }
+        order.fulfillmentStatus = "allocated";
+        await order.save({ session });
+      });
+      cartService.clearCart(req);
+      return res.redirect(`/payment/status/${order._id}`);
+    }
     await order.save();
 
     if (paymentMethod === "esewa") {

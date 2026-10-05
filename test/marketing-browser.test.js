@@ -13,7 +13,7 @@ function browser(t, overrides = {}, stored = {}) {
     <article data-marketing-impression="ProductImpression" data-marketing-target="${productId}">
       <a href="/product/brake-pad" data-marketing-click="ProductClick" data-marketing-target="${productId}"><span>Brake pad</span></a>
     </article>
-    <aside data-marketing-impression="PromotionImpression" data-marketing-target="lab7-helmets"></aside>
+    <aside data-marketing-impression="PromotionImpression" data-marketing-target="riding-gear"></aside>
     <form action="/marketing/consent"><button value="denied">Withdraw</button></form>
     <script type="application/json" id="marketing-config">${JSON.stringify(config)}</script></body></html>`,
     { url: "http://localhost:3000/", runScripts: "outside-only", pretendToBeVisual: true });
@@ -57,7 +57,7 @@ test("browser does not load Meta or send events before consent, after declining,
   }
 });
 
-test("local demo measures visible cards once and captures nested product clicks with CSRF", (t) => {
+test("local analytics measures visible cards once and captures nested product clicks with CSRF", (t) => {
   const fixture = browser(t);
   const card = fixture.window.document.querySelector("article");
   fixture.observer.emit(card, 0.2);
@@ -161,7 +161,7 @@ test("GA4 loads only with consent and a measured page, and sends one sanitized p
 
 test("GA4 purchase uses public items and a stable ID independently of Meta", (t) => {
   const gaId = "G-TEST123456";
-  const purchase = { eventId: "purchase-safe", value: 100, currency: "NPR", items: [{ item_id: productId, quantity: 1 }], demo_payment: true };
+  const purchase = { eventId: "purchase-safe", value: 100, currency: "NPR", items: [{ item_id: productId, quantity: 1 }], test_payment: true };
   const config = { page: "receipt", gaId, gaPage: { location: "http://localhost:3000/purchase-complete", title: "Purchase status" },
     pixelId: "123456789012345", purchase };
   const first = browser(t, config);

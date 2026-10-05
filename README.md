@@ -1,347 +1,239 @@
 # MotoParts Nepal
 
-A college e-commerce project for motorcycle parts in Nepal, built with Node.js,
-Express, MongoDB/Mongoose and EJS. It includes a product catalog, server-side
-shopping cart, guest/account checkout, payment receipts, wallets and notifications.
+A motorcycle parts store with a searchable catalog, cart, account and guest checkout,
+order receipts, wallets, purchase-based recommendations, consent-based analytics and
+on-page SEO. Built with Node.js, Express, EJS and MongoDB.
 
-## Requirements and setup
+## Clone and run on Windows
 
-Use Node.js 22.13+ or 24+. **Docker and a separate MongoDB installation are not
-required for the local demo.** After cloning, run:
+Install Git and **Node.js LTS 24 or later** (Node.js 22.13+ on the 22.x branch is also
+supported). Reopen PowerShell after installation.
 
-```sh
-npm ci
-npm run setup -- --local
-npm start
+```powershell
+git clone https://github.com/Yogesh24129/MotopartsNepal.git
+cd MotopartsNepal
+.\setup.cmd
+.\start.cmd
 ```
 
-Open http://localhost:3000. `npm run dev` starts the app with automatic reloads.
-The cross-platform setup command creates `.env`, generates a random session secret,
-and selects local mode. It preserves existing credentials and secrets. It also works
-on Windows PowerShell; no `cp`, Docker, WSL or administrator terminal is required.
-If you previously configured this repo for Docker, run the setup command with
-`--local` to switch modes. First install/launch downloads MongoDB and needs internet
-access; allow the download through your firewall if prompted.
+Open **http://localhost:3000**. Keep the terminal running; Ctrl+C stops the app.
+Docker, WSL and a separately installed MongoDB server are unnecessary.
 
-The app starts a loopback-only MongoDB replica set on port 27018 using a downloaded
-MongoDB executable. WiredTiger data persists in `.local-data/mongo/` (Git-ignored).
-It seeds 18 demo products only when the local catalog is empty. Existing products,
-accounts and purchase history are preserved when restarting. Keep this folder to
-keep your data; cloning on another device does not transfer it. Stop with Ctrl+C
-before starting another app instance. This managed database is for development only.
-It uses [mongodb-memory-server's local MongoDB launcher](https://typegoose.github.io/mongodb-memory-server/docs/guides/quick-start-guide/)
-with an explicit disk-backed data directory; it does not rely on ephemeral test data.
+`setup.cmd` installs locked dependencies, creates `.env`, generates a random session
+secret and selects local database mode. Existing secrets and credentials are preserved.
+`start.cmd` starts the app; if dependencies or `.env` are missing, it prepares them
+first. Neither command requires PowerShell execution-policy changes. On macOS/Linux,
+use `npm ci`, `npm run setup -- --local`, then `npm start`.
 
-For a different local database port, set `LOCAL_MONGO_PORT` before the first launch.
-Keep that port unchanged once the database has been initialized, because its replica
-set records the member address. If port 3000 is occupied, change `PORT` and
-`APP_BASE_URL` together. Optional wallet accounts can be added from a second terminal
-with `npm run seed:wallets` while the app is running.
+The first install/start needs internet to download MongoDB. Startup automatically
+creates an empty catalog using the included 18-product catalog. Data is disk-backed
+in `.local-data/mongo/`, excluded from Git, and survives restarts. Accounts, orders,
+sessions and wallet balances are local to this device. Preserve this directory for
+backups. Automatic seeding never replaces an existing catalog.
 
-### Atlas or an existing database
+For later updates, stop the server first:
 
-For a shared database or deployment, configure `.env` with:
+```powershell
+git pull origin main
+.\setup.cmd
+.\start.cmd
+```
+
+## Activate HTTPS on Windows later
+
+The server supports local HTTPS at port 3443 alongside HTTP at port 3000.
+
+1. Install mkcert once:
+
+   ```powershell
+   winget install --exact --id FiloSottile.mkcert
+   ```
+
+2. Close and reopen PowerShell in the repository folder. Stop the running app.
+3. Create and trust the local certificate:
+
+   ```powershell
+   npm run https:setup
+   ```
+
+   Accept the Windows certificate-trust/UAC prompt when requested. The script uses
+   `mkcert -install`, creates `certs/localhost-cert.pem` and
+   `certs/localhost-key.pem`, and sets `APP_BASE_URL=https://localhost:3443` and
+   `HTTPS_PORT=3443` in `.env`.
+
+4. Start the app:
+
+   ```powershell
+   .\start.cmd
+   ```
+
+5. Open **https://localhost:3443**. Reopen the browser if it has not picked up the
+   new certificate trust. Use this address consistently so payment returns use HTTPS.
+
+Certificates are generated on each device and excluded from Git. This local
+certificate is for localhost, not a public domain. Do not share the mkcert root
+private key. See [mkcert's instructions](https://github.com/FiloSottile/mkcert) and
+[its Windows package](https://github.com/microsoft/winget-pkgs/tree/master/manifests/f/FiloSottile/mkcert).
+To return to HTTP, set `APP_BASE_URL=http://localhost:3000` and use that address.
+For public hosting, terminate HTTPS with a trusted public certificate at your host
+or reverse proxy and set `APP_BASE_URL` to your actual public origin.
+
+## Payments and checkout
+
+Checkout supports cash on delivery, eSewa and card test processing.
+
+- **Cash on delivery:** creates an order and reserves stock atomically. Its receipt
+  confirms placement, with payment still pending until collection. It is not counted
+  as paid revenue or a paid conversion.
+- **eSewa:** redirects to the hosted gateway, verifies the signed return and checks
+  status independently before marking an order paid. The default configuration uses
+  eSewa's sandbox with its documented public UAT key and `EPAYTEST` product code.
+  Use eSewa's current test-account details from the
+  [official documentation](https://developer.esewa.com.np/pages/Epay). If the gateway
+  changes those details, update `.env`.
+- **Card:** enabled only by `PAYMENT_MODE=sandbox` outside production. It is explicitly
+  marked test processing and does not charge a bank card. Use `4111 1111 1111 1111`,
+  any future MM/YY expiry and CVV `123`. A number ending in `0000` fails. Only the
+  last four digits are stored; use no real card information.
+
+Sandbox card/eSewa orders can exercise receipts, recommendations and conversions.
+They are test transactions, not actual sales. Use separate analytics properties when
+collecting these transactions. For live payments, set `PAYMENT_MODE=live`, configure
+your eSewa merchant credentials and production gateway URLs, and use HTTPS. The
+simulated card route then becomes unavailable; real card charging needs a verified
+provider integration.
+
+Payment retries and duplicate callbacks do not double-charge the local ledger or
+deduct stock twice. A confirmed payment stays paid if stock sells out before the
+callback; its receipt requests fulfillment assistance. No automated refunds or
+administrative fulfillment interface is implemented. Cash-on-delivery collection and
+fulfillment must currently be handled operationally; there is no customer-facing
+control to mark an order paid.
+
+## Accounts, wallets and notifications
+
+Registration and login use password hashing and server-side sessions. Receipt access
+is restricted to the owning account or guest checkout session. Login rotates the
+session identifier while preserving the cart and guest access. Mutating forms and
+JSON requests require CSRF tokens.
+
+Wallets start with zero balance. eSewa top-ups require verified gateway completion;
+transfers update both balances and their ledger together. Account details and wallet
+transaction histories are protected by login. Optional developer wallet fixtures
+are available with `npm run seed:wallets` after choosing `FIXTURE_WALLET_PASSWORD`;
+these insert test balances and must not be used with real customer data. They are
+not created automatically and cannot be seeded in production.
+
+Blank Gmail/Twilio credentials disable email/WhatsApp confirmations. Configure your
+own credentials to enable them. Notification failures do not roll back completed
+payments. There is no durable message retry queue or password-recovery flow yet.
+
+## Session analytics and external tracking
+
+The footer provides measurement consent and a **Session analytics** link to
+`/marketing/dashboard`. Signup is not required. Measurement starts after allowing it;
+withdrawal stops collection and clears this session's local history. The dashboard
+shows this browser session's last 30 days of impressions, clicks, paid conversions,
+order value, click-through rate and checkout conversion rate. It is not a global
+sales/admin dashboard or an external ad-delivery report.
+
+Product/promotion impressions require at least 50% visibility and count once per page.
+Repeated clicks can count separately. Paid purchases come from confirmed order
+records, never from browser-submitted totals. Expired local event documents are
+automatically removed after 30 days.
+
+External transmission is disabled until explicitly configured:
+
+```dotenv
+META_PIXEL_ENABLED=false
+META_PIXEL_ID=
+GA4_ENABLED=false
+GA4_MEASUREMENT_ID=
+```
+
+Add your own numeric Meta Pixel ID or GA4 `G-...` ID and set the relevant enabled flag
+to true. The tag loads only with consent on catalog, product, checkout and receipt
+pages. Customer contact/card details are excluded from app-generated event parameters.
+GA4 page locations omit search strings and receipt IDs. Meta's own library may
+receive browser and page information. Withdrawn consent cannot erase events already
+sent to an external service.
+
+For GA4, create a Web data stream, disable Enhanced measurement to avoid duplicate
+page views and automatic form/search tracking, and use `GA4_DEBUG_MODE=true` for
+DebugView verification. The app sends page views and ecommerce events explicitly.
+Use Realtime for current activity and traffic/page reports for aggregate results.
+As an Editor or Administrator, customize a detail report's Metrics to include
+Engagement rate and Bounce rate. Bounce rate measures non-engaged sessions, not
+local click counts. [Google's bounce-rate instructions](https://support.google.com/analytics/answer/12195621?hl=en)
+
+## Search visibility and recommendations
+
+Public catalog/category/product pages include descriptive titles, descriptions,
+keywords, image alt text, canonical URLs, social metadata, product/offer JSON-LD,
+breadcrumbs, `/sitemap.xml` and `/robots.txt`. Private routes and internal search
+results are marked noindex. Set `SITE_INDEXING_ENABLED=false` for a private deployment.
+Use your real `APP_BASE_URL` before submitting the sitemap to Google Search Console.
+Google ignores the meta keywords tag; useful page content and metadata still matter.
+[Google's metadata guidance](https://developers.google.com/search/docs/crawling-indexing/special-tags)
+
+Signed-in customers receive item-based collaborative recommendations from paid order
+history. Product similarity is the number of shared buyers divided by the square
+root of each product's buyer counts; candidate scores sum those similarities across
+the customer's purchased items. Repeat purchases count once per customer/product.
+Guests and unpaid orders do not contribute. Bought, unavailable, deleted and
+currently viewed products are excluded. Sparse histories show clearly labeled
+discovery suggestions. Customer identities and scores are never shown.
+
+The current engine computes similarities per request for a small catalog. Larger
+deployments should precompute and refresh these similarities. Recommendations do
+not guarantee bike compatibility; customers should check the product details.
+
+## Database and public deployment
+
+Local mode starts a loopback-only WiredTiger MongoDB replica set through
+[mongodb-memory-server](https://typegoose.github.io/mongodb-memory-server/docs/guides/quick-start-guide/)
+with a persistent disk directory. Change `LOCAL_MONGO_PORT` if its default 27018
+conflicts with another service. The application updates its own single-member
+replica-set address when that local port changes.
+
+For a shared database, configure:
 
 ```dotenv
 DB_MODE=external
 MONGO_URI=mongodb+srv://YOUR_USER:YOUR_PASSWORD@YOUR_CLUSTER/motoparts_nepal?retryWrites=true&w=majority
-APP_BASE_URL=http://localhost:3000
 ```
 
-Use your actual Atlas connection string, database user and network access settings.
-The database must be an Atlas cluster or a MongoDB replica set: payment/inventory
-updates and wallet transfers require transactions. External mode never automatically
-seeds a catalog. For a fresh demo database only, run `npm run seed` to populate it;
-this manual seed **replaces all products**. Do not run it on existing store data.
-In local mode, manual seeds require the app to be running first.
+Use your actual Atlas connection string and allow the application's IP in Atlas.
+A replica set/Atlas cluster is required for transactions. Standalone MongoDB is
+unsupported. External mode never auto-seeds. `npm run seed` populates an empty
+catalog; `npm run seed -- --replace` explicitly replaces products and should be
+used only on disposable data. In local mode, manual seed commands require the app
+to be running.
 
-Docker remains an optional alternative: use `DB_MODE=external`, set
-`MONGO_URI=mongodb://127.0.0.1:27017/motoparts_nepal?replicaSet=rs0`, then run
-`docker compose up -d --wait`. Production rejects `DB_MODE=local`; use your external
-connection with a strong session secret and a public `APP_BASE_URL`.
+For public deployment, use external MongoDB, `NODE_ENV=production`, a strong
+`SESSION_SECRET`, live payment configuration and a public HTTPS `APP_BASE_URL`.
+Enable `TRUST_PROXY=1` only behind one trusted reverse proxy. Production rejects the
+managed local database and the card test route. The app has no admin dashboard yet.
 
-## Payments
+## Troubleshooting and verification
 
-**Card payments are simulated.** Use dummy card details only. A future expiry and
-13–16 digit card number succeed; a number ending in `0000` demonstrates a declined
-payment. The app stores only the last four digits. Failed payments can be retried.
+- Connection refused: start the app and wait for the printed website URL.
+- Port occupied: stop the other instance, or change `PORT`/`APP_BASE_URL` together.
+- Database startup waits: the first binary download needs internet. Read the terminal
+  error; allow downloads and execution through applicable Windows security settings.
+- Local database already running: stop the previous server before starting another.
+  Do not delete the data directory to solve a lock error.
+- eSewa not available: check all gateway variables, mode and current eSewa UAT settings.
+- Certificate not trusted: rerun `npm run https:setup`, accept the trust prompt and
+  restart your browser.
 
-**eSewa uses a configured gateway**, rather than an app-hosted login/OTP simulation.
-The example configuration targets eSewa's sandbox. Set the current sandbox signing
-key from the [official eSewa ePay documentation](https://developer.esewa.com.np/pages/Epay).
-Leave the signing key blank to disable eSewa while demonstrating the card flow.
-Never substitute production payment credentials for a college demonstration.
-Old `esewa-login`, `esewa-otp` and `wallet-login` templates are not active routes.
-
-The app verifies signed gateway responses and independently checks the amount,
-product code, transaction UUID and status with eSewa. It tracks retry UUIDs so a
-delayed callback can still be reconciled. Repeated/concurrent confirmations update
-inventory or wallet balance once. Unsigned failure redirects cannot change payment
-or ledger state. Pending gateway status remains pending.
-
-An order stays **paid** if external payment completes after stock sells out. Its
-receipt then requests store assistance and its `fulfillmentStatus` is `stock_review`.
-No inventory is deducted for that order; staff must arrange stock or a refund outside
-this prototype. This app has no automatic refund or admin fulfillment workflow.
-
-## Wallets and accounts
-
-Wallet access requires login. Top-ups must be verified through eSewa; there is no
-endpoint that credits an arbitrary balance. Transfers atomically update both wallets
-and create their ledger record. Amounts must be positive, at most NPR 1,000,000 and
-have no more than two decimal places. The wallet history displays transaction status.
-
-Optional local demo accounts:
-
-```sh
-npm run seed:wallets
-```
-
-This creates `yogjung@example.com`, `rita@example.com` and `bikash@example.com` with
-password `DemoWallet123!` (or `DEMO_WALLET_PASSWORD` from `.env`) and starter balances.
-Rerunning preserves existing passwords and balances. It refuses production mode.
-
-Order pages enforce account ownership; guest orders are tied to the checkout session.
-Logging in rotates the session identifier while retaining the cart and guest receipts.
-Logging out destroys the session. Local POST forms require a CSRF token; JSON clients
-can send it in the `x-csrf-token` header.
-
-## Optional notifications
-
-Set `GMAIL_USER` and `GMAIL_APP_PASSWORD` for email, or the Twilio variables in
-`.env.example` for WhatsApp confirmations. Blank credentials disable those channels.
-Messaging runs after payment commits, and delivery failures do not undo payment.
-Confirmations are attempted once per payment transition; there is no durable message
-retry queue yet.
-
-## Tests and checks
-
-```sh
+```powershell
 npm test
 npm audit --omit=dev
 ```
 
-The regression suite starts an isolated in-memory MongoDB replica set; its first run
-downloads a MongoDB binary. Tests cover ownership, guest receipts, payment retries,
-duplicate callbacks, concurrent stock allocation, concurrent wallet transfers,
-transaction rollback, cart limits, fresh checkout prices, CSRF and wallet seeding.
-Gateway responses are stubbed; tests do not send payments or external messages.
-GitHub Actions runs the suite on pushes and pull requests.
-
-## Structure
-
-- `app.js`: application factory, sessions, CSRF and route wiring
-- `server.js`: database checks and HTTP/optional local HTTPS startup
-- `models/`: users, products, orders, wallets, transactions and notifications
-- `services/`: atomic payment/inventory and wallet operations
-- `routes/`: catalog, cart, checkout, payments, auth, wallets and notifications
-- `middleware/`: cart helpers, ownership checks, CSRF and shared view data
-- `utils/`: gateway signing/status verification and optional messages
-- `test/`: database-backed regression tests
-
-The displayed SHA-256 order checksum detects accidental changes to core order data.
-It is not a tamper-proof audit trail: anyone able to rewrite both an order and its
-checksum can recompute it. Payment status and gateway transaction IDs are separately
-validated through the payment flow.
-
-For production, use HTTPS, set `NODE_ENV=production` and a strong `SESSION_SECRET`,
-and configure `TRUST_PROXY=1` only behind one trusted reverse proxy. The card route
-remains a simulation; replace it with a verified provider integration before accepting
-real card payments. Admin fulfillment, refunds, a durable messaging queue and account
-recovery remain future work.
-
-## Lab 7 — Digital Marketing Tools
-
-The site integrates **Meta (Facebook) Pixel** with a local demo dashboard at
-`/marketing/dashboard`. A Pixel ID is not needed for the local lab demonstration.
-The footer exposes the dashboard link in development, plus allow/decline controls.
-Measurement starts only after consent. Declining stops new events and clears the
-current session's local marketing events and order associations.
-
-The default `.env.example` keeps `META_PIXEL_ENABLED=false` and `META_PIXEL_ID` blank.
-No Meta script or tracking image loads in this mode, and no events are sent to Meta.
-The dashboard shows only this browser session, making it usable for a lab without
-exposing another customer's data. Set `LAB7_DASHBOARD_ENABLED=false` for deployment;
-the dashboard is off by default in production unless explicitly enabled.
-
-| Metric / event | Trigger |
-| --- | --- |
-| `ProductImpression` | At least 50% of a catalog product card becomes visible; once per page load |
-| `PromotionImpression` | At least 50% of the store's riding-gear promotion becomes visible; once per page load |
-| `ProductClick` / `PromotionClick` | A product link or store promotion link is clicked |
-| `PageView` | A consenting visitor opens the catalog, product, checkout or receipt page |
-| `ViewContent` | A product detail page opens |
-| `InitiateCheckout` | Checkout opens |
-| `Purchase` | The server confirms an order is paid; failed payments and receipt reloads do not count |
-
-Website impressions are not Meta ad-delivery impressions. The store promotion is a
-first-party demo banner, not a paid Meta advertisement. The dashboard reports event
-counts, click-through rate (`clicks / impressions`) and checkout conversion rate
-(`paid orders / checkout page views`), plus order value in NPR. Simulated card orders
-are clearly identified. These ratios describe this demo session, not unique-user
-campaign attribution. Event documents expire after 30 days, and dashboard queries
-cover the last 30 days. Purchase totals come directly from paid order records.
-Browser-submitted `Purchase` events are rejected.
-
-### Lab demonstration
-
-1. Open the store and choose **Allow measurement** in the footer.
-2. Scroll through the catalog until the promotion and product cards are visible.
-3. Click **Shop riding gear** or a product image/name.
-4. Add an item, open checkout, and complete a **dummy card** payment with a future
-   expiry and a number that does not end in `0000`.
-5. Open **Lab 7 · Marketing dashboard** in the same browser session and refresh it.
-   Show impressions, clicks, one conversion, order value, rates and recent events.
-6. Reload the receipt and show that conversions remain one. Try a declined payment
-   to show that it does not become a conversion.
-7. Choose **Decline / withdraw** and show that local history clears and tracking stops.
-
-`window.motopartsMarketing` in browser developer tools exposes the mode and recent
-browser events for debugging. The dashboard's conversions remain server-confirmed.
-JavaScript and IntersectionObserver must be available for viewability measurement.
-Ad blockers or failed requests can reduce browser event counts; purchases can be
-confirmed even if browser tracking is blocked.
-
-### Connect a real demo Pixel later
-
-Create a Pixel/data source in your own Meta Events Manager, copy its numeric Pixel ID,
-and configure:
-
-```dotenv
-MARKETING_ENABLED=true
-META_PIXEL_ENABLED=true
-META_PIXEL_ID=YOUR_NUMERIC_PIXEL_ID
-```
-
-Restart the app and explicitly allow measurement. The browser then loads the Meta
-Pixel library and dispatches standard `PageView`, `ViewContent`, `InitiateCheckout`
-and `Purchase` events, plus custom impression/click events. Customer names, email,
-phone, addresses and card details are excluded from our event parameters. Automatic
-Pixel configuration is disabled; advanced matching is not configured. Meta can still
-receive page URLs and browser information as part of its own library's operation.
-Sensitive account and wallet pages do not initialize the Pixel.
-
-Use a dedicated demo Pixel and Meta's **Test Events** / **Meta Pixel Helper** to
-verify receipt. A purchase uses a stable event ID and a browser storage marker to
-avoid repeated dispatch on receipt reload. If browser storage is unavailable it may
-be attempted again with the same ID. The local dashboard cannot confirm Meta
-received an event, and this integration does not implement server-side Conversions
-API delivery or a durable retry queue. Withdrawal cannot erase events already sent
-to Meta. Official references: [Meta Pixel implementation](https://developers.facebook.com/docs/meta-pixel/implementation/)
-and [event reference](https://developers.facebook.com/docs/meta-pixel/reference/).
-
-## Lab 8: Search Engine Optimization and Google Analytics
-
-Public catalog, category and product pages now render unique titles, descriptions,
-keyword metadata, canonical URLs and social previews. Product images have descriptive
-alt text; product pages include breadcrumbs and Product/Offer JSON-LD with current
-NPR prices and stock status. No ratings are fabricated. Keyword metadata is included
-for the lab, but Google ignores the keywords tag: meaningful page content, titles and
-image descriptions matter. See [Google's supported metadata](https://developers.google.com/search/docs/crawling-indexing/special-tags).
-
-`/sitemap.xml` lists the catalog, categories and products. `/robots.txt` points to the
-sitemap and excludes private routes. Search results, authentication, checkout,
-wallet, receipts and error pages have noindex metadata and headers. Robots rules
-are crawl hints; existing authentication remains the protection for private pages.
-Set `APP_BASE_URL` to the site's real HTTP(S) origin for canonical and sitemap URLs.
-Production requires this value. For a staging/demo site that should stay out of
-search results, use `SITE_INDEXING_ENABLED=false` (empty sitemap and noindex public
-pages). A localhost demo is not publicly crawlable. After public deployment, submit
-its sitemap in your own Google Search Console account and inspect a product URL.
-
-### Connect GA4
-
-Google transmission is disabled by default. A real GA4 property and Measurement ID
-are required; the local Lab 7 dashboard does not calculate GA4 traffic or bounce rate.
-
-1. Create a dedicated demo Google Analytics property and a Web data stream for your
-   site. Copy its Measurement ID (`G-...`).
-2. Disable **Enhanced measurement** in that stream for this demo. The app explicitly
-   sends page views and ecommerce events; automatic history, form and site-search
-   tracking could duplicate views or collect additional URL/form information.
-3. Configure your local `.env` (never commit it):
-
-   ```dotenv
-   MARKETING_ENABLED=true
-   GA4_ENABLED=true
-   GA4_MEASUREMENT_ID=G-YOUR_REAL_ID
-   GA4_DEBUG_MODE=true
-   ```
-
-4. Restart the app, allow measurement in the footer, and browse the catalog and a
-   product. Use GA4 **DebugView** and **Realtime** to confirm events arrive. Complete
-   a simulated card purchase to verify the ecommerce journey. Set debug mode false
-   after testing; use a separate demo property for simulated orders.
-
-The Google tag loads only after consent on catalog, product, checkout and receipt
-pages. Events are `page_view`, `view_item`, `begin_checkout` and server-confirmed
-`purchase`. Default automatic page views are disabled to avoid duplicates, as
-[Google documents](https://developers.google.com/analytics/devguides/collection/ga4/views).
-The tag provides session and engagement measurement. GA4 and Meta can be enabled
-independently. Advertising consent remains denied; Google signals and advertising
-personalization are disabled.
-
-Event parameters exclude checkout contact details. Page locations are server-generated
-public paths with search strings and receipt order IDs removed; referrer paths and
-queries are removed. Purchase transaction IDs are stable hashes and browser storage
-prevents repeated attempts on reload. Withdrawal disables further Google collection;
-it does not erase data already sent to Google. Blocked scripts, unavailable browser
-storage and network failures can affect delivery. Automated tests verify commands
-and payloads, but cannot establish live receipt in an unconfigured GA4 account.
-
-### Monitor traffic and bounce rate
-
-Use **Realtime** for immediate activity, **Traffic acquisition** for sessions and
-channels, and **Pages and screens** for page views. To show bounce rate, an Editor or
-Administrator can customize a detail report: **Customize report → Report data →
-Metrics → Add metric**, add **Bounce rate** and **Engagement rate**, then Apply and
-Save. GA4 bounce rate is the percentage of sessions that were not engaged. An engaged
-session lasts over 10 seconds, includes a key event, or has at least two page/screen
-views. See [Google's bounce-rate guide](https://support.google.com/analytics/answer/12195621?hl=en).
-Capture report screenshots after real demo traffic has been processed; do not present
-local event counts as Google Analytics measurements.
-
-## Lab 10: Collaborative filtering recommendations
-
-Signed-in customers see recommendations on the catalog and product detail pages.
-The engine uses **item-based collaborative filtering** with implicit feedback from
-paid orders. Each account contributes one binary interaction per product regardless
-of quantity or repeat purchases. Guest, pending and failed orders are excluded.
-
-For products A and B, similarity is:
-
-```text
-similarity(A, B) = customers who bought both / sqrt(customers who bought A × customers who bought B)
-candidate score = sum of similarity(candidate, purchased item) over the current user's purchased items
-```
-
-The engine ranks positive-score candidates and returns up to four available products.
-It excludes products already purchased, deleted products, out-of-stock products and
-the product currently being viewed. Equal scores use a stable product-ID tie break.
-When no purchase overlap exists, **Discover more parts** shows recently added,
-available products instead; these are not described as personalized recommendations.
-An empty eligible catalog hides the section. Signed-in responses are marked private
-and no-store; other customers' identities, histories and scores are never rendered.
-Recommendations use order records independently of optional advertising analytics.
-
-### Demonstration
-
-1. Ensure the catalog has at least three available products, A, B and C.
-2. Register demo customer one and complete simulated card purchases of A and B.
-3. Register demo customer two in another browser session and purchase A only.
-4. As customer two, open the catalog: B appears under **Recommended for you** because
-   customers who purchased A also purchased B. A is excluded from recommendations.
-5. Open B: B itself is excluded from that product page's suggestions.
-6. Use a new customer with no paid orders to show the **Discover more parts** fallback.
-   Failed/pending payments do not create recommendation interactions.
-
-No fabricated purchase history is inserted automatically. Existing paid simulated
-card orders are valid demo inputs. Suggestions do not guarantee bike compatibility;
-the interface asks customers to check it before ordering. Tests cover cosine scoring,
-repeat purchases, paid-only history, guest exclusion, unavailable/deleted products,
-current-product exclusion, cold start and rendered suggestions.
-
-This basic engine aggregates paid user–product interactions on each personalized
-request. It is suitable for the lab's small catalog; a larger store should precompute
-similarities and refresh them as purchases change. A compound user/payment-status
-index supports the current customer's history lookup.
+Tests use isolated temporary databases and stub external payments/messages. They
+cover transactions, ownership, CSRF, analytics, SEO, recommendations, setup,
+persistent restarts, cash-on-delivery checkout and HTTPS configuration. GitHub Actions
+runs tests on pushes and pull requests. Windows command scripts are intended for
+Windows; validation on other operating systems does not establish Windows execution.

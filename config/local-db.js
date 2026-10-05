@@ -4,7 +4,7 @@ const path = require("node:path");
 function localMode() { return process.env.DB_MODE === "local"; }
 function databaseUri() {
   if (localMode()) return `mongodb://127.0.0.1:${process.env.LOCAL_MONGO_PORT || 27018}/motoparts_nepal?replicaSet=motoparts-local`;
-  if (!process.env.MONGO_URI) throw new Error("Set MONGO_URI for Atlas/external MongoDB, or run npm run setup -- --local for a Docker-free demo.");
+  if (!process.env.MONGO_URI) throw new Error("Set MONGO_URI for Atlas/external MongoDB, or run npm run setup -- --local for a Docker-free local setup.");
   return process.env.MONGO_URI;
 }
 
@@ -26,7 +26,7 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
   try {
     const { MongoMemoryServer } = require("mongodb-memory-server");
     const { MongoClient } = require("mongodb");
-    console.log("[MongoDB] Starting local demo database (first launch downloads MongoDB; no Docker needed)...");
+    console.log("[MongoDB] Starting local database (first launch downloads MongoDB; no Docker needed)...");
     database = new MongoMemoryServer({
       binary: { version: "8.0.17" },
       instance: { port, dbPath: directory, replSet: "motoparts-local", ip: "127.0.0.1", storageEngine: "wiredTiger" },
@@ -36,7 +36,16 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
     try {
       await client.connect();
       const admin = client.db("admin");
-      try { await admin.command({ replSetGetConfig: 1 }); }
+      try {
+        const { config } = await admin.command({ replSetGetConfig: 1 });
+        if (config._id !== "motoparts-local" || config.members.length !== 1) throw new Error("Unexpected local replica-set configuration; use the configured database or contact support.");
+        const host = `127.0.0.1:${port}`;
+        if (config.members[0].host !== host) {
+          config.members[0].host = host;
+          config.version += 1;
+          await admin.command({ replSetReconfig: config, force: true });
+        }
+      }
       catch (error) {
         if (error.code !== 94) throw error;
         await admin.command({ replSetInitiate: { _id: "motoparts-local", members: [{ _id: 0, host: `127.0.0.1:${port}` }] } });

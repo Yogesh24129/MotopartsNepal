@@ -1,5 +1,10 @@
 const express = require("express");
 const router = express.Router();
+const { cardTestEnabled } = require("../services/payment-options");
+function requireCardTest(req, res, next) {
+  if (!cardTestEnabled()) return res.status(404).render("404", { title: "Page not found" });
+  next();
+}
 const crypto = require("crypto");
 const Order = require("../models/Order");
 const cartService = require("../middleware/cart");
@@ -75,12 +80,12 @@ router.get("/esewa/:orderId", loadOrder, paymentMethod("esewa"), async (req, res
   } catch (error) { next(error); }
 });
 
-router.get("/card/:orderId", loadOrder, paymentMethod("card"), (req, res) => {
+router.get("/card/:orderId", requireCardTest, loadOrder, paymentMethod("card"), (req, res) => {
   if (req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
-  res.render("card-payment", { title: "Card Payment (Simulated)", order: req.order });
+  res.render("card-payment", { title: "Card Payment", order: req.order });
 });
 
-router.post("/card/:orderId/process", loadOrder, paymentMethod("card"), async (req, res, next) => {
+router.post("/card/:orderId/process", requireCardTest, loadOrder, paymentMethod("card"), async (req, res, next) => {
   try {
     if (req.order.paymentStatus === "paid") return res.redirect(`/payment/status/${req.order._id}`);
     const { cardName, cardNumber, expiry, cvv } = req.body;
@@ -100,7 +105,7 @@ router.post("/card/:orderId/process", loadOrder, paymentMethod("card"), async (r
 });
 
 router.get("/status/:orderId", loadOrder, (req, res) => {
-  res.render("payment-status", { title: req.order.paymentStatus === "paid" ? "Payment Successful" :
+  res.render("payment-status", { title: req.order.paymentMethod === "cod" ? "Order Confirmed" : req.order.paymentStatus === "paid" ? "Payment Successful" :
     req.order.paymentStatus === "pending" ? "Payment Pending" : "Payment Failed", order: req.order,
     dataIntact: verifyOrderHash(req.order), marketingPage: "receipt", gaPage: gaPage("receipt"), marketingPurchase: purchaseData(req, req.order) });
 });

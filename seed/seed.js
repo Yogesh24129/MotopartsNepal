@@ -180,12 +180,12 @@ async function seedProducts({ replace = false } = {}) {
   if (replace) await Product.deleteMany({});
   const withSlugs = products.map((p) => ({ ...p, slug: slugify(`${p.brand}-${p.name}`) }));
   await Product.insertMany(withSlugs);
-  console.log(`Seeded ${withSlugs.length} demo products.`);
+  console.log(`Seeded ${withSlugs.length} catalog products.`);
 }
 
 if (require.main === module) {
   const connectDB = require("../config/db");
-  connectDB().then(() => seedProducts({ replace: true }))
+  connectDB().then(() => seedProducts({ replace: process.argv.includes("--replace") }))
     .catch((error) => { console.error("Seeding failed:", error.message); process.exitCode = 1; })
     .finally(() => mongoose.disconnect());
 }

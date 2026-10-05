@@ -33,7 +33,7 @@ const orderSchema = new mongoose.Schema(
     integrityHash: { type: String },
     paymentMethod: {
       type: String,
-      enum: ["esewa", "card"],
+      enum: ["esewa", "cod", "card"],
       required: true,
     },
     paymentStatus: {
@@ -44,7 +44,7 @@ const orderSchema = new mongoose.Schema(
     transactionId: { type: String },
     esewaTransactionUuid: { type: String, index: true },
     esewaTransactionUuids: { type: [String], index: true },
-    // Only the last 4 digits are ever stored for the simulated card flow
+    // Only the last 4 digits are ever stored for the automated card test flow
     cardLast4: { type: String },
   },
   { timestamps: true }

@@ -1,13 +1,12 @@
   <footer class="site-footer">
     <div class="container">
       <p><strong>MotoParts Nepal</strong> — genuine and aftermarket motorcycle spare parts, delivered across the Kathmandu Valley.</p>
-      <p>College e-commerce lab project. Card payments are simulated. Use the eSewa sandbox configuration for demonstrations.</p>
-      <% if (marketing.dashboardEnabled) { %><p><a href="/marketing/dashboard" class="marketing-footer-link">Lab 7 · Marketing dashboard</a></p><% } %>
+      <% if (marketing.dashboardEnabled) { %><p><a href="/marketing/dashboard" class="marketing-footer-link">Session analytics</a></p><% } %>
       <% if (marketing.enabled) { %>
         <details class="marketing-preferences" <%= marketingConsent === 'unknown' ? 'open' : '' %>>
           <summary>Marketing measurement · <%= marketingConsent === 'granted' ? 'allowed' : marketingConsent === 'denied' ? 'declined' : 'your choice' %></summary>
-          <p>Allow us to measure product views, promotion clicks and completed purchases for this demo.
-            <%= marketing.pixelId || marketing.gaId ? 'Configured Meta Pixel and/or Google Analytics tags will also receive browsing and purchase events, page URLs and browser information.' : 'Events stay in this site’s demo dashboard. No external analytics service is connected.' %>
+          <p>Allow us to measure product views, promotion clicks and completed purchases to improve your shopping experience.
+            <%= marketing.pixelId || marketing.gaId ? 'Configured Meta Pixel and/or Google Analytics tags will also receive browsing and purchase events, page URLs and browser information.' : 'Events stay in this site’s session analytics. No external analytics service is connected.' %>
             Your checkout contact details are excluded. Declining also clears this session’s local marketing history.</p>
           <form action="/marketing/consent" method="POST">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">

@@ -6,6 +6,8 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const request = require("supertest");
 const session = require("express-session");
 
+process.env.NODE_ENV = "test";
+process.env.PAYMENT_MODE = "sandbox";
 process.env.ESEWA_SECRET_KEY = "test-only-secret";
 process.env.ESEWA_PRODUCT_CODE = "EPAYTEST";
 process.env.ESEWA_GATEWAY_URL = "https://gateway.example.test/form";
@@ -327,7 +329,7 @@ test("money inputs reject non-finite, partially numeric and fractional-cent amou
   assert.equal(money(0.1 + 0.2), 0.3);
 });
 
-test("demo wallet seeding creates users and preserves existing balances on rerun", async () => {
+test("fixture wallet seeding creates users and preserves existing balances on rerun", async () => {
   await seedWallets();
   assert.equal(await User.countDocuments(), 3);
   const wallet = await Wallet.findOne({ email: "rita@example.com" });
@@ -382,7 +384,7 @@ function marketingConfigFrom(response) {
   return JSON.parse(match[1]);
 }
 
-test("Lab 7 defaults to local-only measurement and rejects events before consent", async () => {
+test("Session analytics defaults to local-only measurement and rejects events before consent", async () => {
   const agent = request.agent(app);
   const page = await agent.get("/");
   const config = marketingConfigFrom(page);
@@ -392,10 +394,10 @@ test("Lab 7 defaults to local-only measurement and rejects events before consent
     .send({ events: [{ type: "PageView", page: "catalog", eventId: crypto.randomUUID() }] }).expect(403);
   assert.equal(await MarketingEvent.countDocuments(), 0);
   const dashboard = await agent.get("/marketing/dashboard").expect(200);
-  assert.match(dashboard.text, /Local demo · no Meta connection/);
+  assert.match(dashboard.text, /Local measurement/);
 });
 
-test("Lab 7 records visible-product and promotion events, deduplicates IDs, and scopes dashboards to the session", async () => {
+test("Session analytics records visible-product and promotion events, deduplicates IDs, and scopes dashboards to the session", async () => {
   const a = request.agent(app), b = request.agent(app);
   const part = await product();
   const csrf = await consent(a);
@@ -403,8 +405,8 @@ test("Lab 7 records visible-product and promotion events, deduplicates IDs, and 
     { eventId: crypto.randomUUID(), type: "PageView", page: "catalog" },
     { eventId: crypto.randomUUID(), type: "ProductImpression", page: "catalog", targetId: String(part._id) },
     { eventId: crypto.randomUUID(), type: "ProductClick", page: "catalog", targetId: String(part._id) },
-    { eventId: crypto.randomUUID(), type: "PromotionImpression", page: "catalog", targetId: "lab7-helmets" },
-    { eventId: crypto.randomUUID(), type: "PromotionClick", page: "catalog", targetId: "lab7-helmets" },
+    { eventId: crypto.randomUUID(), type: "PromotionImpression", page: "catalog", targetId: "riding-gear" },
+    { eventId: crypto.randomUUID(), type: "PromotionClick", page: "catalog", targetId: "riding-gear" },
   ];
   await Promise.all([a.post("/marketing/events").set("x-csrf-token", csrf).send({ events }).expect(204),
     a.post("/marketing/events").set("x-csrf-token", csrf).send({ events }).expect(204)]);
@@ -421,7 +423,7 @@ test("Lab 7 records visible-product and promotion events, deduplicates IDs, and 
   assert.doesNotMatch(otherDashboard.text, new RegExp(String(part._id)));
 });
 
-test("Lab 7 rejects browser-forged purchases and unknown or oversized event batches", async () => {
+test("Session analytics rejects browser-forged purchases and unknown or oversized event batches", async () => {
   const agent = request.agent(app), csrf = await consent(agent);
   for (const event of [
     { eventId: crypto.randomUUID(), type: "Purchase", page: "receipt", value: 9999 },
@@ -433,7 +435,7 @@ test("Lab 7 rejects browser-forged purchases and unknown or oversized event batc
   assert.equal(await MarketingEvent.countDocuments(), 0);
 });
 
-test("Lab 7 counts paid purchases once across retries and receipt reloads, using server amounts", async () => {
+test("Session analytics counts paid purchases once across retries and receipt reloads, using server amounts", async () => {
   const agent = request.agent(app);
   const part = await product();
   const csrf = await consent(agent);
@@ -498,7 +500,7 @@ test("consent survives session rotation at registration without leaking into ano
   assert.equal(marketingConfigFrom(await request(app).get("/")).consent, "unknown");
 });
 
-test("Lab 7 validates Pixel IDs, supports disabling measurement, and prevents consent open redirects", async () => {
+test("Session analytics validates Pixel IDs, supports disabling measurement, and prevents consent open redirects", async () => {
   const agent = request.agent(app), csrf = await consent(agent);
   const response = await agent.post("/marketing/consent").send({ _csrf: csrf, choice: "granted",
     returnTo: "//example.com" }).expect(303);
@@ -526,7 +528,7 @@ process.env.SITE_INDEXING_ENABLED = "true";
   }
 });
 
-test("Lab 7 demo journey wires rendered browser events through to paid-order dashboard metrics", async (t) => {
+test("Session analytics purchase journey wires rendered browser events through to paid-order dashboard metrics", async (t) => {
   const { JSDOM } = require("jsdom");
   const fs = require("node:fs"), path = require("node:path");
   const source = fs.readFileSync(path.join(__dirname, "../public/js/marketing.js"), "utf8");
@@ -645,7 +647,7 @@ test("SEO JSON safely escapes script terminators and analytics configuration val
   }
 });
 
-test("Lab 10 collaborative filtering ranks shared purchases and excludes unavailable or owned parts", async () => {
+test("Recommendations collaborative filtering ranks shared purchases and excludes unavailable or owned parts", async () => {
   const { recommendations, rankCandidates } = require("../services/recommendations");
   const { agent, user } = await account();
   const seed = await product();
@@ -687,7 +689,7 @@ test("Lab 10 collaborative filtering ranks shared purchases and excludes unavail
   assert.equal(scores.get("y"), 1 / Math.sqrt(2));
 });
 
-test("Lab 10 cold start is labeled discovery and guests receive no personal recommendations", async () => {
+test("Recommendations cold start is labeled discovery and guests receive no personal recommendations", async () => {
   const { recommendations } = require("../services/recommendations");
   const { agent, user } = await account();
   const seed = await product();
@@ -704,4 +706,67 @@ test("Lab 10 cold start is labeled discovery and guests receive no personal reco
   order.paymentStatus = "paid";
   await order.save();
   assert.deepEqual((await recommendations(user._id)).products, []);
+});
+
+test("cash on delivery reserves stock and confirms the order without counting a paid conversion", async () => {
+  const { agent, user } = await account();
+  const part = await product(2);
+  const home = await agent.get("/").expect(200);
+  await agent.post("/cart/add/" + part._id).type("form").send({ _csrf: token(home), quantity: 2 }).expect(302);
+  const checkout = await agent.get("/checkout").expect(200);
+  const result = await agent.post("/checkout").type("form").send({ _csrf: token(checkout),
+    fullName: "Buyer", phone: "9800000000", email: "buyer@example.com", address: "Street 1", city: "Kathmandu",
+    paymentMethod: "cod" }).expect(302);
+  const order = await Order.findOne({ user: user._id });
+  assert.equal(order.paymentStatus, "pending");
+  assert.equal(order.fulfillmentStatus, "allocated");
+  assert.equal((await Product.findById(part._id)).stock, 0);
+  const receipt = await agent.get(result.headers.location).expect(200);
+  assert.match(receipt.text, /Order confirmed/);
+  assert.ok(!receipt.text.includes("Retry Payment"));
+  assert.ok(!receipt.text.includes("Order hash (SHA-256)"));
+  assert.equal(marketingConfigFrom(receipt).purchase, null);
+  assert.equal((await agent.get("/cart")).text.includes("Your cart is empty"), true);
+  // Later recording of a collected COD payment must not deduct the reserved stock again.
+  await finalizeOrder(order._id, "paid", "COLLECTED", { method: "cod" });
+  assert.equal((await Product.findById(part._id)).stock, 0);
+});
+
+test("concurrent cash-on-delivery orders allocate the last item once", async () => {
+  const first = await account("one@example.com"), second = await account("two@example.com");
+  const part = await product(1);
+  const payloads = [];
+  for (const { agent } of [first, second]) {
+    const home = await agent.get("/");
+    await agent.post("/cart/add/" + part._id).type("form").send({ _csrf: token(home), quantity: 1 });
+    const checkout = await agent.get("/checkout");
+    payloads.push({ _csrf: token(checkout), fullName: "Buyer", phone: "9800000000", email: "buyer@example.com",
+      address: "Street 1", city: "Kathmandu", paymentMethod: "cod" });
+  }
+  await Promise.all([first.agent.post("/checkout").type("form").send(payloads[0]),
+    second.agent.post("/checkout").type("form").send(payloads[1])]);
+  assert.equal(await Order.countDocuments({ paymentMethod: "cod" }), 1);
+  assert.equal((await Product.findById(part._id)).stock, 0);
+});
+
+test("live mode blocks simulated card processing and renders normal store wording", async () => {
+  const { agent, user } = await account();
+  const part = await product();
+  const order = await orderFor(user, part);
+  const mode = process.env.PAYMENT_MODE;
+  try {
+    process.env.PAYMENT_MODE = "live";
+    await agent.get("/payment/card/" + order._id).expect(404);
+    const home = await agent.get("/");
+    await agent.post("/cart/add/" + part._id).type("form").send({ _csrf: token(home), quantity: 1 });
+    const checkout = await agent.get("/checkout").expect(200);
+    assert.ok(!checkout.text.includes('value="card"'));
+    const result = await agent.post("/checkout").type("form").send({ _csrf: token(checkout), fullName: "Buyer",
+      phone: "9800000000", email: "buyer@example.com", address: "Street 1", city: "Kathmandu", paymentMethod: "card" });
+    assert.equal(result.status, 302);
+    assert.equal(await Order.countDocuments(), 1);
+    const dashboard = await agent.get("/marketing/dashboard").expect(200);
+    assert.ok(!/Lab\s+\d|College|local demo|dummy card/i.test(home.text + dashboard.text));
+    assert.match(home.text, /Session analytics/);
+  } finally { process.env.PAYMENT_MODE = mode; }
 });

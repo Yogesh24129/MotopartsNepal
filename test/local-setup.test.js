@@ -52,7 +52,11 @@ test("local MongoDB preserves catalog and transaction data across restarts witho
     const saved = await Product.findOne({ stock: 7 });
     await mongoose.disconnect();
     await database.stop();
-    database = await startLocalDatabase({ directory: root, port });
+    const nextPort = net.createServer();
+    await new Promise((resolve) => nextPort.listen(0, "127.0.0.1", resolve));
+    const changedPort = nextPort.address().port;
+    await new Promise((resolve) => nextPort.close(resolve));
+    database = await startLocalDatabase({ directory: root, port: changedPort });
     await mongoose.connect(database.uri);
     await seedProducts();
     assert.equal(await Product.countDocuments(), count);
@@ -77,4 +81,19 @@ test("external mode requires a URI and production refuses managed local MongoDB"
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
+});
+
+test("HTTPS configuration preserves credentials while setting the correct Windows localhost origin", () => {
+  const { configureHttps } = require("../scripts/https-setup");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "motoparts-https-"));
+  try {
+    fs.writeFileSync(path.join(root, ".env"), "SESSION_SECRET=existing-secret\nDB_MODE=local\nAPP_BASE_URL=http://localhost:3000\n");
+    configureHttps(root);
+    const text = fs.readFileSync(path.join(root, ".env"), "utf8");
+    assert.match(text, /^APP_BASE_URL=https:\/\/localhost:3443$/m);
+    assert.match(text, /^HTTPS_PORT=3443$/m);
+    assert.match(text, /^SESSION_SECRET=existing-secret$/m);
+    configureHttps(root);
+    assert.equal(fs.readFileSync(path.join(root, ".env"), "utf8"), text);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

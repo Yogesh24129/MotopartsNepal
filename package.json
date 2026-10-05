@@ -1,7 +1,7 @@
 {
   "name": "motoparts-nepal",
   "version": "1.0.0",
-  "description": "MotoParts Nepal - E-commerce site for motorcycle spare parts in Nepal (College E-Commerce Project)",
+  "description": "MotoParts Nepal \u2014 motorcycle parts, orders, wallets, recommendations and analytics",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,7 +9,8 @@
     "seed": "node seed/seed.js",
     "seed:wallets": "node seed/seedWallets.js",
     "test": "node --test --test-concurrency=1",
-    "setup": "node scripts/setup.js"
+    "setup": "node scripts/setup.js",
+    "https:setup": "node scripts/https-setup.js"
   },
   "keywords": [
     "ecommerce",

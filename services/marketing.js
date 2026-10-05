@@ -14,8 +14,8 @@ function marketingConfig() {
   const gaId = process.env.GA4_MEASUREMENT_ID || "";
   if (gaEnabled && !/^G-[A-Z0-9]{6,20}$/.test(gaId)) throw new Error("GA4_MEASUREMENT_ID must be a valid G- Measurement ID when GA4_ENABLED=true.");
   return { enabled, gaId: gaEnabled ? gaId : "", gaDebug: gaEnabled && process.env.GA4_DEBUG_MODE === "true", pixelId: pixelEnabled ? pixelId : "",
-    dashboardEnabled: enabled && (process.env.LAB7_DASHBOARD_ENABLED === "true" ||
-      (process.env.LAB7_DASHBOARD_ENABLED !== "false" && process.env.NODE_ENV !== "production")) };
+    dashboardEnabled: enabled && ((process.env.MARKETING_DASHBOARD_ENABLED ?? process.env.LAB7_DASHBOARD_ENABLED) === "true" ||
+      ((process.env.MARKETING_DASHBOARD_ENABLED ?? process.env.LAB7_DASHBOARD_ENABLED) !== "false" && process.env.NODE_ENV !== "production")) };
 }
 
 function purchaseEventId(order) {
@@ -28,7 +28,7 @@ function purchaseData(req, order) {
   return { eventId: purchaseEventId(order), value: order.total, currency: "NPR",
     content_ids: order.items.map((item) => String(item.product)), content_type: "product",
     items: order.items.map((item) => ({ item_id: String(item.product), item_name: item.name, price: item.price, quantity: item.quantity })),
-    num_items: order.items.reduce((sum, item) => sum + item.quantity, 0), demo_payment: order.paymentMethod === "card" };
+    num_items: order.items.reduce((sum, item) => sum + item.quantity, 0), test_payment: order.paymentMethod === "card" || process.env.PAYMENT_MODE === "sandbox" && order.paymentMethod === "esewa" };
 }
 
 function exposeMarketing(req, res, next) {
@@ -63,7 +63,7 @@ async function recordEvents(req, events) {
           !await Product.exists({ _id: event.targetId })) throw httpError(400, "Unknown product.");
       targetId = event.targetId;
     } else if (["PromotionImpression", "PromotionClick"].includes(event.type)) {
-      if (event.targetId !== "lab7-helmets") throw httpError(400, "Unknown promotion.");
+      if (event.targetId !== "riding-gear") throw httpError(400, "Unknown promotion.");
       targetId = event.targetId;
     }
     if (event.type === "InitiateCheckout" && event.page !== "checkout") throw httpError(400, "Checkout event must come from checkout.");
@@ -94,7 +94,7 @@ async function dashboard(visitor) {
   const clicks = (counts.ProductClick || 0) + (counts.PromotionClick || 0);
   const conversions = orders.length;
   const recent = [...events, ...orders.map((order) => ({ type: "Purchase", targetId: "Paid order",
-    createdAt: order.paidAt, value: order.total, simulated: order.paymentMethod === "card" }))]
+    createdAt: order.paidAt, value: order.total, paymentMethod: order.paymentMethod }))]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 40);
   return { counts, impressions, clicks, conversions, recent,
     revenue: Math.round(orders.reduce((sum, order) => sum + order.total, 0) * 100) / 100,

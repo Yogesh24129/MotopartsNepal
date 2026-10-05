@@ -36,17 +36,20 @@
 
         <h3 style="font-size:1rem; margin-top:22px;">Payment Method</h3>
         <div class="payment-method-choice">
-          <label class="method-card esewa-brand">
-            <input type="radio" name="paymentMethod" value="esewa" checked>
-            eSewa
-          </label>
           <label class="method-card">
-            <input type="radio" name="paymentMethod" value="card">
-            Credit / Debit Card
+            <input type="radio" name="paymentMethod" value="cod" checked>
+            Cash on delivery
           </label>
+          <% if (paymentOptions.esewa) { %>
+            <label class="method-card esewa-brand"><input type="radio" name="paymentMethod" value="esewa"> eSewa<%= paymentOptions.sandbox ? " (sandbox)" : "" %></label>
+          <% } %>
+          <% if (paymentOptions.card) { %>
+            <label class="method-card"><input type="radio" name="paymentMethod" value="card"> Credit / debit card</label>
+          <% } %>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-block">Continue to Payment</button>
+        <% if (paymentOptions.card) { %><p class="payment-mode-note">Card payments use test processing. Use test card details only; no bank charge is made.</p><% } %>
+        <button type="submit" class="btn btn-primary btn-block">Place order</button>
       </form>
 
       <div class="cart-summary" style="margin-left:0;">

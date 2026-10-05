@@ -11,8 +11,9 @@ const examples = [
 ];
 
 async function seedWallets() {
-  if (process.env.NODE_ENV === "production") throw new Error("Demo wallets cannot be seeded in production.");
-  const passwordHash = await bcrypt.hash(process.env.DEMO_WALLET_PASSWORD || "DemoWallet123!", 10);
+  if (process.env.NODE_ENV === "production") throw new Error("Fixture wallets cannot be seeded in production.");
+  if (process.env.NODE_ENV !== "test" && !process.env.FIXTURE_WALLET_PASSWORD) throw new Error("Set FIXTURE_WALLET_PASSWORD before creating development fixtures.");
+  const passwordHash = await bcrypt.hash(process.env.FIXTURE_WALLET_PASSWORD || (process.env.NODE_ENV === "test" ? "TestingWallet123!" : ""), 10);
   for (const example of examples) {
     const user = await User.findOneAndUpdate({ email: example.email },
       { $setOnInsert: { name: example.name, email: example.email, passwordHash } },
@@ -21,7 +22,7 @@ async function seedWallets() {
       { $setOnInsert: { ownerName: user.name, email: user.email, balance: example.balance } },
       { upsert: true, runValidators: true });
   }
-  console.log("Demo wallet accounts are ready. Existing passwords and balances were preserved.");
+  console.log("Fixture wallet accounts are ready. Existing passwords and balances were preserved.");
 }
 
 if (require.main === module) {

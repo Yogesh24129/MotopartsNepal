@@ -24,8 +24,8 @@ async function finalizeOrder(orderId, status, transactionId, options = {}) {
         stock.has(String(item.product)) && stock.get(String(item.product)) >= item.quantity);
       // A confirmed external payment must stay paid even if stock sold out while
       // the buyer was at the gateway. Flag it for fulfillment/refund review.
-      order.fulfillmentStatus = available ? "allocated" : "stock_review";
-      if (available) {
+      order.fulfillmentStatus = order.paymentMethod === "cod" && order.fulfillmentStatus === "allocated" ? "allocated" : available ? "allocated" : "stock_review";
+      if (available && order.paymentMethod !== "cod") {
         for (const item of order.items) {
           const result = await Product.updateOne(
             { _id: item.product, stock: { $gte: item.quantity } },

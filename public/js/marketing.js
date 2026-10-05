@@ -1,4 +1,4 @@
-/* Labs 7–8: external measurement loads only after explicit consent. */
+/* Analytics: external measurement loads only after explicit consent. */
 (() => {
   "use strict";
   const element = document.getElementById("marketing-config");
@@ -10,7 +10,7 @@
   const visible = new Set();
   const queue = [];
   let timer, observer;
-  const debug = { mode: [config.pixelId && "meta-pixel", config.gaId && "ga4"].filter(Boolean).join("+") || "local-demo", consent: config.consent, events: [] };
+  const debug = { mode: [config.pixelId && "meta-pixel", config.gaId && "ga4"].filter(Boolean).join("+") || "local", consent: config.consent, events: [] };
   window.motopartsMarketing = debug;
 
   function storageGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
@@ -99,8 +99,8 @@
       const response = await fetch("/marketing/events", { method: "POST", credentials: "same-origin", keepalive: true,
         headers: { "Content-Type": "application/json", "x-csrf-token": config.csrfToken }, body: JSON.stringify({ events: batch }) });
       if (response.status === 403) stop();
-      else if (!response.ok) console.warn("Marketing demo events could not be recorded.");
-    } catch { console.warn("Marketing demo events could not be recorded. Check your connection."); }
+      else if (!response.ok) console.warn("Analytics events could not be recorded.");
+    } catch { console.warn("Analytics events could not be recorded. Check your connection."); }
     if (allowed && queue.length) timer = setTimeout(flush, 50);
   }
 
@@ -138,10 +138,10 @@
   }
 
   if (config.purchase && config.gaId) {
-    const { eventId, value, currency, items, demo_payment } = config.purchase;
+    const { eventId, value, currency, items, test_payment } = config.purchase;
     const key = `motoparts-ga-purchase:${config.gaId}:${eventId}`;
     if (!storageGet(key)) {
-      analytics("purchase", { transaction_id: eventId, value, currency, items, demo_payment });
+      analytics("purchase", { transaction_id: eventId, value, currency, items, test_payment });
       storageSet(key, "attempted");
     }
   }

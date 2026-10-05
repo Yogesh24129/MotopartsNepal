@@ -35,7 +35,7 @@ router.get("/dashboard", async (req, res, next) => {
   try {
     if (!marketingConfig().dashboardEnabled) throw httpError(404, "Page not found.");
     const metrics = await dashboard(req.session.marketingVisitor);
-    res.render("marketing-dashboard", { title: "Lab 7 · Digital Marketing", metrics });
+    res.render("marketing-dashboard", { title: "Session analytics", metrics });
   } catch (error) { next(error); }
 });
 
