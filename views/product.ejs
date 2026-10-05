@@ -1,0 +1,43 @@
+<%- include('partials/header') %>
+
+<div class="container">
+  <div class="product-detail">
+    <div class="thumb-large">
+      <img src="<%= product.image %>" alt="<%= product.name %>">
+    </div>
+    <div>
+      <div class="brand-tag" style="text-transform:uppercase;color:#9a9da3;font-weight:700;font-size:0.8rem;"><%= product.brand %></div>
+      <h1 style="text-transform:none;font-size:1.7rem;"><%= product.name %></h1>
+      <div class="price" style="font-family:'Oswald',sans-serif;font-size:1.6rem;color:#e04a15;"><%= "Rs. " + product.price.toLocaleString('en-IN') %></div>
+
+      <% if (product.stock === 0) { %>
+        <p class="stock-tag out">Out of stock</p>
+      <% } else if (product.stock <= 5) { %>
+        <p class="stock-tag low">Only <%= product.stock %> left in stock</p>
+      <% } else { %>
+        <p class="stock-tag in">In stock — ready to ship</p>
+      <% } %>
+
+      <p><%= product.description %></p>
+
+      <ul class="spec-list">
+        <li><span>Category</span><span><%= product.category %></span></li>
+        <li><span>Brand</span><span><%= product.brand %></span></li>
+        <li><span>Compatible with</span><span><%= product.compatibleModels.join(', ') %></span></li>
+      </ul>
+
+      <% if (product.stock > 0) { %>
+        <form action="/cart/add/<%= product._id %>" method="POST" style="display:flex; gap:10px; align-items:center;">
+          <input type="number" name="quantity" class="qty-input" value="1" min="1" max="<%= product.stock %>">
+          <button type="submit" class="btn btn-primary">Add to cart</button>
+        </form>
+      <% } else { %>
+        <button class="btn btn-outline" disabled>Currently unavailable</button>
+      <% } %>
+
+      <p style="margin-top:20px;"><a href="/" class="btn-outline btn btn-sm">&larr; Back to all parts</a></p>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,66 @@
+<%- include('partials/header') %>
+
+<div class="container" style="padding-bottom:70px;">
+  <h1 style="margin-top:30px;">Your Cart</h1>
+
+  <% if (items.length === 0) { %>
+    <div class="empty-state">
+      <h2>Your cart is empty</h2>
+      <p>Browse our catalog and add some parts to get started.</p>
+      <a href="/" class="btn btn-primary" style="margin-top:16px;">Browse parts</a>
+    </div>
+  <% } else { %>
+    <table class="cart-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Price</th>
+          <th>Quantity</th>
+          <th>Subtotal</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% items.forEach(function(item) { %>
+          <tr>
+            <td>
+              <div class="cart-item-info">
+                <img src="<%= item.image %>" alt="<%= item.name %>">
+                <span class="name"><%= item.name %></span>
+              </div>
+            </td>
+            <td>Rs. <%= item.price.toLocaleString('en-IN') %></td>
+            <td>
+              <form class="qty-form" action="/cart/update/<%= item.productId %>" method="POST">
+                <input type="number" name="quantity" value="<%= item.quantity %>" min="1" max="<%= item.stock || 99 %>" class="qty-input" style="width:60px;">
+                <button type="submit" class="btn btn-outline btn-sm">Update</button>
+              </form>
+            </td>
+            <td>Rs. <%= (item.price * item.quantity).toLocaleString('en-IN') %></td>
+            <td>
+              <form action="/cart/remove/<%= item.productId %>" method="POST">
+                <button type="submit" class="remove-link">Remove</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:20px;">
+      <form action="/cart/clear" method="POST">
+        <button type="submit" class="btn btn-outline btn-sm">Clear cart</button>
+      </form>
+
+      <div class="cart-summary">
+        <div class="summary-row"><span>Subtotal</span><span>Rs. <%= subtotal.toLocaleString('en-IN') %></span></div>
+        <div class="summary-row"><span>Delivery</span><span>Rs. <%= shippingFee.toLocaleString('en-IN') %></span></div>
+        <div class="summary-row total"><span>Total</span><span>Rs. <%= total.toLocaleString('en-IN') %></span></div>
+        <a href="/checkout" class="btn btn-primary btn-block" style="margin-top:16px;">Proceed to Checkout</a>
+        <a href="/" class="btn btn-outline btn-block" style="margin-top: 10px;">Continue Shopping</a>
+      </div>
+    </div>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

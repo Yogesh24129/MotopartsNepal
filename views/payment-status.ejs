@@ -1,0 +1,57 @@
+<%- include('partials/header') %>
+
+  <div class="container">
+    <div class="status-shell">
+      <% if (order.paymentStatus==='paid' ) { %>
+        <div class="status-icon ok">&#10003;</div>
+        <h1>Payment Successful</h1>
+        <p>Thank you, <%= order.customer.fullName %> — your order has been placed.</p>
+        <% } else { %>
+          <div class="status-icon fail">&#10007;</div>
+          <h1>Payment Failed</h1>
+          <p>We couldn't process your payment. No amount was charged. You can try again.</p>
+          <a href="/payment/<%= order.paymentMethod %>/<%= order._id %>" class="btn btn-primary"
+            style="margin-top:10px;">Retry Payment</a>
+          <% } %>
+
+            <div class="receipt">
+              <div class="row"><span>Order ID</span><span>
+                  <%= order._id %>
+                </span></div>
+              <div class="row"><span>Payment method</span><span>
+                  <%= order.paymentMethod==='esewa' ? 'eSewa' : 'Credit/Debit Card' %>
+                </span></div>
+              <% if (order.transactionId) { %>
+                <div class="row"><span>Transaction ID</span><span>
+                    <%= order.transactionId %>
+                  </span></div>
+                <% } %>
+                  <% if (order.cardLast4) { %>
+                    <div class="row"><span>Card</span><span>**** **** **** <%= order.cardLast4 %></span></div>
+                    <% } %>
+                      <div class="row"><span>Delivery to</span><span>
+                          <%= order.customer.address %>, <%= order.customer.city %>
+                        </span></div>
+                      <div class="row"><span>Total</span><span>Rs. <%= order.total.toLocaleString('en-IN') %></span>
+                      </div>
+                      <div class="row">
+                        <span>Data integrity</span>
+                        <span style="color: <%= dataIntact ? '#2e7d32' : '#e5484d' %>; font-weight:700;">
+                          <%= dataIntact ? 'Verified (SHA-256)' : 'Tampered - hash mismatch!' %>
+                        </span>
+                      </div>
+                      <div class="row">
+                        <span>Order hash (SHA-256)</span>
+                        <span
+                          style="font-family:monospace; font-size:0.72rem; word-break:break-all; max-width:220px; text-align:right;">
+                          <%= order.integrityHash %>
+                        </span>
+                      </div>
+            </div>
+    </div>
+
+    <p style="margin-top:24px;"><a href="/" class="btn btn-outline">Continue shopping</a></p>
+  </div>
+  </div>
+
+  <%- include('partials/footer') %>

@@ -1,0 +1,21 @@
+<%- include('partials/header') %>
+<div class="container">
+  <div class="gateway-shell">
+    <div class="gateway-header">
+      <div class="logo">eSewa</div>
+      <div style="font-size:0.75rem;">Redirecting…</div>
+    </div>
+    <div class="gateway-body" style="text-align:center;">
+      <p>Redirecting you to eSewa's secure test payment page…</p>
+      <p style="font-size:0.8rem;color:#9a9da3;">Not redirected automatically? Click below.</p>
+      <form id="esewaForm" action="<%= gatewayUrl %>" method="POST">
+        <% Object.keys(fields).forEach(function(key) { %>
+          <input type="hidden" name="<%= key %>" value="<%= fields[key] %>">
+        <% }) %>
+        <button type="submit" class="btn btn-esewa btn-block">Continue to eSewa</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>document.getElementById('esewaForm').submit();</script>
+<%- include('partials/footer') %>

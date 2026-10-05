@@ -1,0 +1,55 @@
+<%- include('partials/header') %>
+
+<section class="hero">
+  <div class="container">
+    <div class="eyebrow">Kathmandu Valley · Genuine &amp; Aftermarket Parts</div>
+    <h1>Keep your bike road-ready with parts built for Nepal's roads.</h1>
+    <p>From Pulsar brake pads to monsoon-ready seat covers — browse spare parts sourced for the bikes that actually run here.</p>
+  </div>
+</section>
+
+<div class="container">
+  <div class="chip-row">
+    <a href="/" class="chip <%= activeCategory === '' ? 'active' : '' %>">All Parts</a>
+    <% categories.forEach(function(cat) { %>
+      <a href="/?category=<%= encodeURIComponent(cat) %>" class="chip <%= activeCategory === cat ? 'active' : '' %>"><%= cat %></a>
+    <% }) %>
+  </div>
+
+  <% if (products.length === 0) { %>
+    <div class="empty-state">
+      <h2>No parts found</h2>
+      <p>Try a different search term or category.</p>
+    </div>
+  <% } else { %>
+    <div class="product-grid">
+      <% products.forEach(function(p) { %>
+        <div class="product-card">
+          <a href="/product/<%= p.slug %>" class="thumb">
+            <img src="<%= p.image %>" alt="<%= p.name %>">
+          </a>
+          <div class="body">
+            <div class="brand-tag"><%= p.brand %></div>
+            <h3><a href="/product/<%= p.slug %>"><%= p.name %></a></h3>
+            <div class="price">Rs. <%= p.price.toLocaleString('en-IN') %></div>
+            <% if (p.stock === 0) { %>
+              <span class="stock-tag out">Out of stock</span>
+            <% } else if (p.stock <= 5) { %>
+              <span class="stock-tag low">Only <%= p.stock %> left</span>
+            <% } else { %>
+              <span class="stock-tag in">In stock</span>
+            <% } %>
+            <form action="/cart/add/<%= p._id %>" method="POST">
+              <input type="hidden" name="quantity" value="1">
+              <button type="submit" class="btn btn-primary btn-block btn-sm" <%= p.stock === 0 ? 'disabled' : '' %>>
+                <%= p.stock === 0 ? 'Out of stock' : 'Add to cart' %>
+              </button>
+            </form>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

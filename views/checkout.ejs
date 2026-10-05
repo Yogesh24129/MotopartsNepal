@@ -1,0 +1,66 @@
+<%- include('partials/header') %>
+
+  <div class="container" style="padding-bottom:70px;">
+    <h1 style="margin-top:30px;">Checkout</h1>
+
+    <div style="display:grid; grid-template-columns: 1.3fr 1fr; gap:32px;">
+      <form class="form-card" action="/checkout" method="POST">
+        <h3 style="font-size:1rem;">Delivery Details</h3>
+
+        <div class="form-row">
+          <label for="fullName">Full name *</label>
+          <input type="text" id="fullName" name="fullName" required>
+        </div>
+
+        <div class="form-row-inline">
+          <div class="form-row">
+            <label for="phone">Phone number *</label>
+            <input type="tel" id="phone" name="phone" placeholder="98XXXXXXXX" required>
+          </div>
+          <div class="form-row">
+            <label for="email">Email *</label>
+            <input type="email" id="email" name="email" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label for="address">Delivery address *</label>
+          <input type="text" id="address" name="address" placeholder="Street, ward, landmark" required>
+        </div>
+
+        <div class="form-row">
+          <label for="city">City *</label>
+          <input type="text" id="city" name="city" placeholder="e.g. Kathmandu, Lalitpur, Bhaktapur" required>
+        </div>
+
+        <h3 style="font-size:1rem; margin-top:22px;">Payment Method</h3>
+        <div class="payment-method-choice">
+          <label class="method-card esewa-brand">
+            <input type="radio" name="paymentMethod" value="esewa" checked>
+            eSewa
+          </label>
+          <label class="method-card">
+            <input type="radio" name="paymentMethod" value="card">
+            Credit / Debit Card
+          </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Continue to Payment</button>
+      </form>
+
+      <div class="cart-summary" style="margin-left:0;">
+        <h3 style="font-size:1rem;">Order Summary</h3>
+        <% items.forEach(function(item) { %>
+          <div class="summary-row"><span>
+              <%= item.name %> &times; <%= item.quantity %>
+            </span><span>Rs. <%= (item.price * item.quantity).toLocaleString('en-IN') %></span></div>
+          <% }) %>
+            <div class="summary-row"><span>Subtotal</span><span>Rs. <%= subtotal.toLocaleString('en-IN') %></span></div>
+            <div class="summary-row"><span>Shipping</span><span>Rs. <%= shippingFee.toLocaleString('en-IN') %></span>
+            </div>
+            <div class="summary-row total"><span>Total</span><span>Rs. <%= total.toLocaleString('en-IN') %></span></div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('partials/footer') %>

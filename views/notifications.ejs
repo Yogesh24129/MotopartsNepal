@@ -1,0 +1,21 @@
+<%- include('partials/header') %>
+<div class="container" style="padding-bottom:70px;">
+  <h1 style="margin-top:30px;">Notifications</h1>
+
+  <% if (notifications.length === 0) { %>
+    <div class="empty-state">
+      <h2>No notifications yet</h2>
+      <p>Order updates will show up here.</p>
+    </div>
+  <% } else { %>
+    <div style="max-width:640px;">
+      <% notifications.forEach(function(n) { %>
+        <a href="<%= n.link %>" style="display:block;background:#fff;border:1px solid #e7e3d9;border-radius:4px;padding:14px 16px;margin-bottom:10px;">
+          <div style="font-weight:600;"><%= n.message %></div>
+          <div style="font-size:0.78rem;color:#9a9da3;margin-top:4px;"><%= n.createdAt.toLocaleString() %></div>
+        </a>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

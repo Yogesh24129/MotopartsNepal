@@ -1,0 +1,30 @@
+<%- include('partials/header') %>
+
+<div class="container">
+  <div class="gateway-shell">
+    <div class="gateway-header">
+      <div class="logo">eSewa</div>
+      <div style="font-size:0.75rem;">SIMULATED</div>
+    </div>
+    <div class="gateway-body">
+      <div class="gateway-note">
+        OTP has been sent to your registered mobile number.
+      </div>
+
+      <div class="amount-display">
+        <div class="amt">Rs. <%= order.total.toLocaleString('en-IN') %></div>
+        <div class="label">Confirm payment to MotoParts Nepal</div>
+      </div>
+
+      <form action="/payment/esewa/<%= order._id %>/verify" method="POST">
+        <div class="form-row">
+          <label for="otp">Enter 6-digit verification code</label>
+          <input type="text" id="otp" name="otp" maxlength="6" inputmode="numeric" placeholder="123456" required style="letter-spacing:0.3em; font-size:1.2rem; text-align:center;">
+        </div>
+        <button type="submit" class="btn btn-esewa btn-block">Confirm &amp; Pay</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

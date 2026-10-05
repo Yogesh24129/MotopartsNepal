@@ -1,0 +1,59 @@
+<%- include('partials/header') %>
+
+<div class="container">
+  <div class="gateway-shell card-brand">
+    <div class="gateway-header">
+      <div class="logo">Secure Card Payment</div>
+      <div style="font-size:0.75rem;">SIMULATED</div>
+    </div>
+    <div class="gateway-body">
+      <div class="gateway-note">
+        <strong>Please Enter your Card Details</strong>
+         </div>
+
+      <div class="amount-display">
+        <div class="amt">Rs. <%= order.total.toLocaleString('en-IN') %></div>
+        <div class="label">Amount payable to MotoParts Nepal</div>
+      </div>
+
+      <form action="/payment/card/<%= order._id %>/process" method="POST">
+        <div class="form-row">
+          <label for="cardName">Name on card</label>
+          <input type="text" id="cardName" name="cardName" placeholder="As shown on card" required>
+        </div>
+        <div class="form-row">
+          <label for="cardNumber">Card number</label>
+          <input type="text" id="cardNumber" name="cardNumber" placeholder="4111 1111 1111 1111" maxlength="19" required>
+        </div>
+        <div class="form-row-inline">
+          <div class="form-row">
+            <label for="expiry">Expiry (MM/YY)</label>
+            <input type="text" id="expiry" name="expiry" placeholder="MM/YY" maxlength="5" required>
+          </div>
+          <div class="form-row">
+            <label for="cvv">CVV</label>
+            <input type="password" id="cvv" name="cvv" placeholder="123" maxlength="4" required>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-dark btn-block">Pay Rs. <%= order.total.toLocaleString('en-IN') %></button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>
+
+<script>
+  // Light client-side formatting only — all real validation happens server-side.
+  const cardInput = document.getElementById('cardNumber');
+  cardInput.addEventListener('input', () => {
+    let digits = cardInput.value.replace(/\D/g, '').slice(0, 16);
+    cardInput.value = digits.replace(/(.{4})/g, '$1 ').trim();
+  });
+  const expiryInput = document.getElementById('expiry');
+  expiryInput.addEventListener('input', () => {
+    let digits = expiryInput.value.replace(/\D/g, '').slice(0, 4);
+    if (digits.length >= 3) digits = digits.slice(0,2) + '/' + digits.slice(2);
+    expiryInput.value = digits;
+  });
+</script>
