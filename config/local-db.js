@@ -34,27 +34,37 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
     });
     await database.start(true); // Persistent replica-set members must retain their configured port.
     phase = "replica-set configuration";
-    const client = new MongoClient(`mongodb://127.0.0.1:${port}/?directConnection=true`);
+    const client = new MongoClient(`mongodb://127.0.0.1:${port}/?directConnection=true`,
+      { connectTimeoutMS: 5000, serverSelectionTimeoutMS: 5000 });
+    const transient = (error) => ["MongoNetworkError", "MongoNetworkTimeoutError", "MongoServerSelectionError"].includes(error.name) ||
+      [91, 11600, 11602, 10107, 13435].includes(error.code);
     try {
-      await client.connect();
       const admin = client.db("admin");
-      try {
-        const { config } = await admin.command({ replSetGetConfig: 1 });
-        if (config._id !== "motoparts-local" || config.members.length !== 1) throw new Error("Unexpected local replica-set configuration; use the configured database or contact support.");
-        const host = `127.0.0.1:${port}`;
-        if (config.members[0].host !== host) {
-          config.members[0].host = host;
-          config.version += 1;
-          try { await admin.command({ replSetReconfig: config, force: true }); }
+      const configurationDeadline = Date.now() + 30000;
+      while (true) {
+        try {
+          await client.connect();
+          let config;
+          try { ({ config } = await admin.command({ replSetGetConfig: 1 })); }
           catch (error) {
-            // Reconfiguration can close the command connection as the member steps down.
-            if (error.name !== "MongoNetworkError" && ![91, 11600, 11602, 10107, 13435].includes(error.code)) throw error;
+            if (error.code !== 94) throw error;
+            await admin.command({ replSetInitiate: { _id: "motoparts-local", members: [{ _id: 0, host: `127.0.0.1:${port}` }] } });
+            break;
           }
+          if (config._id !== "motoparts-local" || config.members.length !== 1) throw new Error("Unexpected local replica-set configuration; use the configured database or contact support.");
+          const host = `127.0.0.1:${port}`;
+          if (config.members[0].host !== host) {
+            config.members[0].host = host;
+            config.version += 1;
+            await admin.command({ replSetReconfig: config, force: true });
+          }
+          break;
+        } catch (error) {
+          // Windows can drop connections while restoring or reconfiguring the persisted member.
+          // Re-read the configuration before retrying, so an applied configuration isn't repeated.
+          if (!transient(error) || Date.now() > configurationDeadline) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
-      }
-      catch (error) {
-        if (error.code !== 94) throw error;
-        await admin.command({ replSetInitiate: { _id: "motoparts-local", members: [{ _id: 0, host: `127.0.0.1:${port}` }] } });
       }
       phase = "primary election";
       const deadline = Date.now() + 30000;
@@ -67,7 +77,7 @@ async function startLocalDatabase({ directory = path.join(__dirname, "../.local-
         }
         catch (error) {
           readyChecks = 0;
-          if (error.name !== "MongoNetworkError" && ![91, 11600, 11602, 10107, 13435].includes(error.code)) throw error;
+          if (!transient(error)) throw error;
         }
         if (Date.now() > deadline) throw new Error("Local MongoDB did not become ready within 30 seconds.");
         await new Promise((resolve) => setTimeout(resolve, 100));
