@@ -1,9 +1,9 @@
 const nodemailer = require("nodemailer");
-const twilio = require("twilio");
+
 const { httpError } = require("../utils/validation");
 function configured(channel) {
   return channel === "email" ? Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) :
-    Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_FROM && process.env.SHIPPING_WHATSAPP_CONTENT_SID);
+    channel === "whatsapp";
 }
 async function deliver(notice) {
   if (!configured(notice.channel)) throw httpError(503, "Configure the shipping notification provider first.");
@@ -13,11 +13,10 @@ async function deliver(notice) {
     if (!result.accepted || !result.accepted.length) throw new Error("Recipient was not accepted.");
     return result.messageId;
   }
-  const result = await twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN).messages.create({
-    from: process.env.TWILIO_WHATSAPP_FROM, to: "whatsapp:" + notice.recipient,
-    contentSid: process.env.SHIPPING_WHATSAPP_CONTENT_SID,
-    contentVariables: JSON.stringify({ "1": notice.subject, "2": notice.body.replace(/\s+/g, " ") }),
-  });
-  return result.sid;
+  throw httpError(400, "Open WhatsApp to send this notice manually.");
 }
-module.exports = { configured, deliver };
+function whatsappUrl(recipient, body) {
+  if (!/^\+[1-9]\d{7,14}$/.test(recipient)) throw httpError(400, "Enter a valid WhatsApp number with its country code.");
+  return "https://wa.me/" + recipient.slice(1) + "?text=" + encodeURIComponent(body);
+}
+module.exports = { configured, deliver, whatsappUrl };

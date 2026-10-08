@@ -19,6 +19,7 @@ const orderSchema = new mongoose.Schema(
     marketingVisitor: { type: String, index: true },
     shippingStatus: { type: String, enum: ["processing", "dispatched", "delivered", "cancelled"], default: "processing", index: true },
     shippingPartner: { type: mongoose.Schema.Types.ObjectId, ref: "ShippingPartner" },
+    finalizedAt: Date,
     paymentEnvironment: { type: String, enum: ["live", "sandbox", "unknown"], default: "unknown" },
     paidAt: { type: Date },
     items: [orderItemSchema],

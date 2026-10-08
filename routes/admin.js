@@ -21,6 +21,10 @@ router.get("/", wrap(async (req, res) => {
   const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
   render(res, "overview", { data: await service.metrics(days) });
 }));
+router.get("/marketing", wrap(async (req, res) => {
+  const { marketingConfig, dashboard } = require("../services/marketing");
+  render(res, "marketing", { title: "Marketing measurement", metrics: await dashboard(), measurement: marketingConfig() });
+}));
 router.get("/products", wrap(async (req, res) => {
   const page = pagination(req), { q, regex } = search(req);
   const filter = q ? { $or: [{ name: regex }, { brand: regex }, { slug: regex }] } : {};
@@ -80,7 +84,7 @@ router.post("/partners", wrap(async (req, res) => {
 async function shipment(id) {
   const order = await Order.findById(id).populate("shippingPartner");
   if (!order) throw httpError(404, "Order not found.");
-  if (!order.shippingPartner || !order.shippingPartner.active || order.shippingStatus === "cancelled" || order.fulfillmentStatus !== "allocated" || (order.paymentMethod !== "cod" && order.paymentStatus !== "paid")) throw httpError(409, "Assign an active partner to an order with reserved stock and payment or COD.");
+  if (!order.finalizedAt || !order.shippingPartner || !order.shippingPartner.active || order.shippingStatus === "cancelled" || order.fulfillmentStatus !== "allocated" || (order.paymentMethod !== "cod" && order.paymentStatus !== "paid")) throw httpError(409, "Finalize the order with an active partner, reserved stock and payment or COD first.");
   return order;
 }
 router.post("/orders/:id/notices/preview", wrap(async (req, res) => {
@@ -107,6 +111,14 @@ router.post("/notices/:id/send", wrap(async (req, res) => {
   if (notice.status !== "draft") throw httpError(409, "This notice was already submitted. Check provider records before creating another.");
   const order = await shipment(notice.order), partner = order.shippingPartner;
   if (!partner._id.equals(notice.partner) || +order.updatedAt !== +notice.orderVersion || +partner.updatedAt !== +notice.partnerVersion) throw httpError(409, "Shipment or recipient changed. Create a fresh preview.");
+  if (notice.channel === "whatsapp") {
+    if (!partner.whatsappOptIn) throw httpError(409, "Partner WhatsApp opt-in is missing.");
+    const url = delivery.whatsappUrl(notice.recipient, notice.body);
+    const opened = await Notice.findOneAndUpdate({ _id: notice._id, status: "draft" }, { $set: { status: "opened" } });
+    if (!opened) throw httpError(409, "This WhatsApp draft was already opened.");
+    await service.audit(res.locals.currentUser._id, "shipping_notice", notice._id, "WhatsApp draft opened; sending is not confirmed.");
+    return res.redirect(303, url);
+  }
   if (!delivery.configured(notice.channel)) throw httpError(503, "Notification provider is not configured. See README shipping setup.");
   const claimed = await Notice.findOneAndUpdate({ _id: notice._id, status: "draft" }, { $set: { status: "sending" } }, { new: true });
   if (!claimed) throw httpError(409, "Notice already submitted.");

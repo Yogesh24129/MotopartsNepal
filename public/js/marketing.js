@@ -1,11 +1,11 @@
-/* Analytics: external measurement loads only after explicit consent. */
+/* Store measurement starts automatically on measured pages. */
 (() => {
   "use strict";
   const element = document.getElementById("marketing-config");
   if (!element) return;
   let config;
   try { config = JSON.parse(element.textContent); } catch { return; }
-  let allowed = config.enabled && config.consent === "granted";
+  let allowed = config.enabled;
   const observed = new Set();
   const visible = new Set();
   const queue = [];
@@ -15,7 +15,6 @@
 
   function storageGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
   function storageSet(key, value) { try { localStorage.setItem(key, value); } catch { /* Storage can be unavailable. */ } }
-  if (config.consent !== "unknown") storageSet("motoparts-marketing-consent", config.consent);
 
   function stop() {
     allowed = false;
@@ -27,17 +26,6 @@
     if (config.gaId) window[`ga-disable-${config.gaId}`] = true;
     if (window.gtag) window.gtag("consent", "update", { analytics_storage: "denied" });
   }
-  window.addEventListener("storage", (event) => {
-    if (event.key === "motoparts-marketing-consent" && event.newValue === "denied") stop();
-  });
-  document.querySelectorAll('form[action="/marketing/consent"]').forEach((form) => {
-    form.addEventListener("submit", (event) => {
-      if (event.submitter?.value === "denied") {
-        stop();
-        storageSet("motoparts-marketing-consent", "denied");
-      }
-    });
-  });
   if (!allowed || !config.page) return;
 
   if (config.pixelId) {

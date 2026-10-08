@@ -1,7 +1,7 @@
 # MotoParts Nepal
 
 A motorcycle parts store with a searchable catalog, cart, account and guest checkout,
-order receipts, wallets, purchase-based recommendations, consent-based analytics and
+order receipts, wallets, purchase-based recommendations, automatic analytics and
 on-page SEO. Built with Node.js, Express, EJS and MongoDB.
 
 ## Clone and run on Windows
@@ -132,20 +132,11 @@ Blank Gmail/Twilio credentials disable email/WhatsApp confirmations. Configure y
 own credentials to enable them. Notification failures do not roll back completed
 payments. There is no durable message retry queue or password-recovery flow yet.
 
-## Session analytics and external tracking
+## Marketing measurement and external tracking
 
-The footer provides measurement consent and a **Session analytics** link to
-`/marketing/dashboard`. Signup is not required. Measurement starts after allowing it;
-withdrawal stops collection and clears this session's local history. The dashboard
-shows this browser session's last 30 days of impressions, clicks, paid conversions,
-order value, click-through rate and checkout conversion rate. It is not a global
-sales dashboard or an external ad-delivery report. The protected admin overview
-at /admin provides store-wide database counts and measurement summaries.
+Measurement starts automatically for visitors on catalog, product, checkout and receipt pages. The administrator-only report at `/admin/marketing` combines the last 30 days of impressions, clicks, attributed paid conversions, order value and conversion rates across visitors. The admin overview also shows store-wide counts. The footer has no measurement controls or public report link. Set `MARKETING_ENABLED=false` to disable collection in server configuration.
 
-Product/promotion impressions require at least 50% visibility and count once per page.
-Repeated clicks can count separately. Paid purchases come from confirmed order
-records, never from browser-submitted totals. Expired local event documents are
-automatically removed after 30 days.
+Product/promotion impressions require at least 50% visibility and count once per page. Repeated clicks can count separately. Purchases come from confirmed paid order records, never browser-submitted totals. Local events expire after 30 days. Sandbox payments are included and are test transactions.
 
 External transmission is disabled until explicitly configured:
 
@@ -157,11 +148,10 @@ GA4_MEASUREMENT_ID=
 ```
 
 Add your own numeric Meta Pixel ID or GA4 `G-...` ID and set the relevant enabled flag
-to true. The tag loads only with consent on catalog, product, checkout and receipt
+to true. The tag loads automatically on measured pages on catalog, product, checkout and receipt
 pages. Customer contact/card details are excluded from app-generated event parameters.
 GA4 page locations omit search strings and receipt IDs. Meta's own library may
-receive browser and page information. Withdrawn consent cannot erase events already
-sent to an external service.
+receive browser and page information. Disabling measurement does not erase events already sent to an external service.
 
 For GA4, create a Web data stream, disable Enhanced measurement to avoid duplicate
 page views and automatic form/search tracking, and use `GA4_DEBUG_MODE=true` for
@@ -263,7 +253,7 @@ also launches the app through start.cmd and verifies the homepage responds.
 
 The overview shows registered users, active products, total orders, new customers,
 paid order value, average order value, payment environment breakdown, daily sales,
-best-selling products, low stock, and consent-based traffic/impression/click counts.
+best-selling products, low stock, and automatic traffic/impression/click counts.
 Sandbox totals are identified separately. Older orders without an environment
 are reported as unknown. Traffic documents expire after 30 days, even when selecting
 a longer sales period. GA4 bounce and engagement metrics remain in your GA4 property.
@@ -283,8 +273,7 @@ or grant administrator roles. There is no default administrator password.
 
 Add a partner in **Admin → Shipping partners**, including email or an international
 WhatsApp number (for example `+9779800000000`). Record the partner's WhatsApp opt-in,
-then assign that partner to an order. Open the order, choose a channel, preview the
-delivery manifest and recipient, and press **Send**.
+then assign that partner to an order. Review stock and payment/COD, and click **Finalize order**. Choose a notification channel and preview the delivery manifest. **Open WhatsApp** opens the partner’s number with the message prefilled; press Send in WhatsApp. The site records only that the draft was opened. No Twilio credentials are needed for shipping WhatsApp. **Send email notice** sends through the configured Gmail account.
 
 Configure the local `.env`, then restart the app:
 
@@ -297,12 +286,7 @@ TWILIO_WHATSAPP_FROM=whatsapp:+your-approved-sender
 SHIPPING_WHATSAPP_CONTENT_SID=your-approved-shipping-template-sid
 ```
 
-Email requires both Gmail values. WhatsApp requires all four Twilio values and a
-shipping template with `{{1}}` for the shipment subject and `{{2}}` for the delivery
-manifest. Follow [Twilio's official template notification instructions](https://www.twilio.com/docs/whatsapp/tutorial/send-whatsapp-notification-messages-templates)
-to provision the sender and approved template. For Twilio sandbox testing, partners
-must join your sandbox. Use the separate shipping template; the customer confirmation
-template is configured independently by `TWILIO_CONTENT_SID`.
+Email requires both Gmail values. Twilio settings apply only to optional customer confirmations, not shipping partner WhatsApp drafts.
 
 A notice is claimed once before provider submission. Duplicate clicks cannot resend
 it. If the order or partner changes after preview, create a fresh preview. **Accepted**

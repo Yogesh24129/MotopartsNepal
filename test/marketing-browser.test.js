@@ -46,8 +46,8 @@ function click(fixture) {
 function flush(fixture) { fixture.window.dispatchEvent(new fixture.window.Event("pagehide")); }
 function events(fixture) { return fixture.requests.flatMap((request) => request.body.events); }
 
-test("browser does not load Meta or send events before consent, after declining, or when disabled", (t) => {
-  for (const config of [{ consent: "unknown" }, { consent: "denied" }, { enabled: false }]) {
+test("browser does not load Meta or send events when measurement is disabled", (t) => {
+  for (const config of [{ enabled: false }]) {
     const fixture = browser(t, { pixelId: "123456789012345", ...config });
     click(fixture);
     flush(fixture);
@@ -116,16 +116,16 @@ test("purchase dispatch uses a stable event ID and skips an already-attempted re
   assert.ok(events(first).every((event) => event.type !== "Purchase"), "browser cannot submit conversion counts");
 });
 
-test("withdrawal stops queued collection and revokes the already-initialized Pixel", (t) => {
+test("legacy consent storage does not stop automatic measurement", (t) => {
   const fixture = browser(t, { pixelId: "123456789012345" });
   fixture.window.dispatchEvent(new fixture.window.StorageEvent("storage", {
     key: "motoparts-marketing-consent", newValue: "denied",
   }));
   click(fixture);
   flush(fixture);
-  assert.equal(fixture.requests.length, 0);
-  assert.equal(fixture.window.motopartsMarketing.consent, "denied");
-  assert.ok(fixture.calls().some((command) => command[0] === "consent" && command[1] === "revoke"));
+  assert.ok(fixture.requests.length > 0);
+  assert.ok(events(fixture).some(event => event.type === "ProductClick"));
+  assert.ok(!fixture.calls().some((command) => command[0] === "consent" && command[1] === "revoke"));
 });
 
 test("account, wallet and dashboard pages do not initialize external tracking", (t) => {
@@ -135,9 +135,9 @@ test("account, wallet and dashboard pages do not initialize external tracking", 
   assert.equal(fixture.requests.length, 0);
 });
 
-test("GA4 loads only with consent and a measured page, and sends one sanitized page view", (t) => {
+test("GA4 loads automatically on a measured page, and sends one sanitized page view", (t) => {
   const ga = { gaId: "G-TEST123456", gaPage: { location: "http://localhost:3000/", title: "Catalog" } };
-  for (const override of [{ consent: "unknown" }, { consent: "denied" }, { enabled: false }, { page: null }]) {
+  for (const override of [{ enabled: false }, { page: null }]) {
     const fixture = browser(t, { ...ga, ...override });
     assert.equal(fixture.window.gtag, undefined);
     assert.equal(fixture.window.document.querySelector('script[src*="googletagmanager"]'), null);
@@ -155,8 +155,7 @@ test("GA4 loads only with consent and a measured page, and sends one sanitized p
   fixture.window.dispatchEvent(new fixture.window.StorageEvent("storage", {
     key: "motoparts-marketing-consent", newValue: "denied",
   }));
-  assert.equal(fixture.window["ga-disable-G-TEST123456"], true);
-  assert.equal(fixture.window.dataLayer.at(-1)[2].analytics_storage, "denied");
+  assert.equal(fixture.window["ga-disable-G-TEST123456"], false);
 });
 
 test("GA4 purchase uses public items and a stable ID independently of Meta", (t) => {
@@ -172,4 +171,10 @@ test("GA4 purchase uses public items and a stable ID independently of Meta", (t)
   assert.equal(first.calls().find((call) => call[1] === "Purchase")[2].items, undefined);
   const reload = browser(t, config, { [`motoparts-ga-purchase:${gaId}:purchase-safe`]: "attempted" });
   assert.equal(Array.from(reload.window.dataLayer).filter((call) => call[1] === "purchase").length, 0);
+});
+
+test("measurement starts despite legacy declined settings", (t) => {
+  const fixture = browser(t, { consent: "denied" }, { "motoparts-marketing-consent": "denied" });
+  flush(fixture);
+  assert.ok(events(fixture).some(event => event.type === "PageView"));
 });

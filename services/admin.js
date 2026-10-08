@@ -71,7 +71,15 @@ async function updateOrder(id, body, actor) {
         if (body.partner) {
           const Partner = require("../models/ShippingPartner");
           if (!await Partner.exists({ _id: body.partner, active: true }).session(session)) throw httpError(400, "Choose an active shipping partner.");
+          if (String(order.shippingPartner) !== body.partner) order.finalizedAt = undefined;
           order.shippingPartner = body.partner;
+        }
+        if (body.action === "finalize") {
+          if (!order.shippingPartner || order.fulfillmentStatus !== "allocated" ||
+              (order.paymentMethod !== "cod" && order.paymentStatus !== "paid")) throw httpError(409, "Assign a partner and reserve stock with confirmed payment or COD before finalizing.");
+          const Partner = require("../models/ShippingPartner");
+          if (!await Partner.exists({ _id: order.shippingPartner, active: true }).session(session)) throw httpError(409, "Choose an active shipping partner.");
+          order.finalizedAt = new Date();
         }
         if (body.status && body.status !== order.shippingStatus) {
           const allowed = { processing: "dispatched", dispatched: "delivered" };

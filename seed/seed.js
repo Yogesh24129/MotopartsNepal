@@ -167,6 +167,15 @@ const products = [
   },
 ];
 
+const imageFiles = [
+  "frontpad.jpg", "drumbrake.jpg", "mrf.jpg", "zoomtyre.jpg",
+  "5w-40.jpg", "20w-50.jpg", "chain-sprocket.jpg", "airfilter.jpg",
+  "spark.jpg", "battery.jpg", "headlight.jpg", "speedometer.jpg",
+  "sidemirror.jpg", "seatcover.jpg", "helmet.jpg", "ridinggloves.jpg",
+  "bikecover.png", "mobileholder.jpg",
+];
+products.forEach((product, index) => { product.image = `/images/products/${imageFiles[index]}`; });
+
 function slugify(name) {
   return name
     .toLowerCase()
@@ -176,11 +185,27 @@ function slugify(name) {
 }
 
 async function seedProducts({ replace = false } = {}) {
-  if (!replace && await Product.exists({})) return;
+  if (!replace && await Product.exists({})) {
+    await repairProductImages();
+    return;
+  }
   if (replace) await Product.deleteMany({});
   const withSlugs = products.map((p) => ({ ...p, slug: slugify(`${p.brand}-${p.name}`) }));
   await Product.insertMany(withSlugs);
   console.log(`Seeded ${withSlugs.length} catalog products.`);
+}
+
+async function repairProductImages() {
+  let repaired = 0;
+  for (const product of products) {
+    const result = await Product.updateMany({
+      slug: slugify(`${product.brand}-${product.name}`),
+      $or: [{ image: "/images/placeholder-part.svg" }, { image: "" }, { image: null },
+        ...(product.image === "/images/products/battery.jpg" ? [{ image: "/images/products/battery.jfif" }] : [])],
+    }, { $set: { image: product.image } });
+    repaired += result.modifiedCount;
+  }
+  if (repaired) console.log(`Updated images for ${repaired} catalog products.`);
 }
 
 if (require.main === module) {
@@ -189,4 +214,4 @@ if (require.main === module) {
     .catch((error) => { console.error("Seeding failed:", error.message); process.exitCode = 1; })
     .finally(() => mongoose.disconnect());
 }
-module.exports = { seedProducts };
+module.exports = { seedProducts, repairProductImages };

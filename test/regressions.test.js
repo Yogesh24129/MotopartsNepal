@@ -64,6 +64,7 @@ beforeEach(async () => {
 
 function token(response) {
   const match = response.text.match(/name="_csrf" value="([a-f0-9]+)"/);
+  if (!match && response.text.includes('id="marketing-config"')) return marketingConfigFrom(response).csrfToken;
   assert.ok(match, "page provides a CSRF token");
   return match[1];
 }
@@ -378,10 +379,8 @@ test("pending gateway verification preserves pending order state", async () => {
   } finally { global.fetch = originalFetch; }
 });
 
-async function consent(agent, choice = "granted") {
-  const page = await agent.get("/").expect(200);
-  await agent.post("/marketing/consent").send({ _csrf: token(page), choice, returnTo: "/" }).expect(303);
-  return token(await agent.get("/"));
+async function consent(agent) {
+  return token(await agent.get("/").expect(200));
 }
 function marketingConfigFrom(response) {
   const match = response.text.match(/<script type="application\/json" id="marketing-config">([\s\S]*?)<\/script>/);
@@ -389,17 +388,18 @@ function marketingConfigFrom(response) {
   return JSON.parse(match[1]);
 }
 
-test("Session analytics defaults to local-only measurement and rejects events before consent", async () => {
+test("Session analytics starts local-only measurement automatically and protects admin reports", async () => {
   const agent = request.agent(app);
   const page = await agent.get("/");
   const config = marketingConfigFrom(page);
   assert.equal(config.pixelId, "");
-  assert.equal(config.consent, "unknown");
+  assert.equal(config.consent, "granted");
+  assert.doesNotMatch(page.text, /Allow measurement|marketing-preferences|Session analytics/);
   await agent.post("/marketing/events").set("x-csrf-token", token(page))
-    .send({ events: [{ type: "PageView", page: "catalog", eventId: crypto.randomUUID() }] }).expect(403);
-  assert.equal(await MarketingEvent.countDocuments(), 0);
-  const dashboard = await agent.get("/marketing/dashboard").expect(200);
-  assert.match(dashboard.text, /Local measurement/);
+    .send({ events: [{ type: "PageView", page: "catalog", eventId: crypto.randomUUID() }] }).expect(204);
+  assert.equal(await MarketingEvent.countDocuments(), 1);
+  await agent.get("/admin/marketing").expect(302);
+  await agent.get("/marketing/dashboard").expect(302);
 });
 
 test("Session analytics records visible-product and promotion events, deduplicates IDs, and scopes dashboards to the session", async () => {
@@ -423,9 +423,14 @@ test("Session analytics records visible-product and promotion events, deduplicat
   assert.equal(metrics.clicks, 2);
   assert.equal(metrics.ctr, 100);
   await consent(b);
-  const otherDashboard = await b.get("/marketing/dashboard").expect(200);
-  assert.match(otherDashboard.text, /No events yet/);
-  assert.doesNotMatch(otherDashboard.text, new RegExp(String(part._id)));
+  await b.get("/marketing/dashboard").expect(302);
+  const { agent: admin, user } = await account();
+  user.role = "admin"; await user.save();
+  const report = await admin.get("/admin/marketing").expect(200);
+  assert.match(report.text, /across all visitors/);
+  assert.match(report.text, new RegExp(String(part._id)));
+  const global = await dashboard();
+  assert.equal(global.impressions, 2);
 });
 
 test("Session analytics rejects browser-forged purchases and unknown or oversized event batches", async () => {
@@ -477,39 +482,29 @@ test("Session analytics counts paid purchases once across retries and receipt re
   assert.equal(await MarketingEvent.countDocuments({ type: "Purchase" }), 0);
 });
 
-test("withdrawing marketing consent deletes local events and unlinks orders, and blocks future events", async () => {
-  const { agent, user } = await account();
+test("removed consent route cannot disable measurement or delete history", async () => {
+  const { agent } = await account();
   const csrf = await consent(agent);
-  await agent.post("/marketing/events").set("x-csrf-token", csrf).send({ events: [
-    { eventId: crypto.randomUUID(), type: "PageView", page: "catalog" },
-  ] }).expect(204);
-  const visitor = (await MarketingEvent.findOne()).visitor;
-  const order = await orderFor(user, await product());
-  await Order.updateOne({ _id: order._id }, { marketingVisitor: visitor });
-  await consent(agent, "denied");
-  assert.equal(await MarketingEvent.countDocuments(), 0);
-  assert.equal((await Order.findById(order._id)).marketingVisitor, undefined);
-  const page = await agent.get("/");
-  await agent.post("/marketing/events").set("x-csrf-token", token(page)).send({ events: [
-    { eventId: crypto.randomUUID(), type: "PageView", page: "catalog" },
-  ] }).expect(403);
-  assert.equal(marketingConfigFrom(page).consent, "denied");
+  const event = { eventId: crypto.randomUUID(), type: "PageView", page: "catalog" };
+  await agent.post("/marketing/events").set("x-csrf-token", csrf).send({ events: [event] }).expect(204);
+  await agent.post("/marketing/consent").send({ _csrf: csrf, choice: "denied" }).expect(404);
+  assert.equal(await MarketingEvent.countDocuments(), 1);
+  assert.equal(marketingConfigFrom(await agent.get("/")).consent, "granted");
+  await agent.get("/admin/marketing").expect(403);
+  await agent.get("/marketing/dashboard").expect(403);
 });
 
-test("consent survives session rotation at registration without leaking into another session", async () => {
+test("automatic measurement survives registration and initializes new sessions", async () => {
   const agent = request.agent(app);
   const csrf = await consent(agent);
   await agent.post("/auth/register").send({ _csrf: csrf, name: "Buyer", email: "buyer@example.com",
     password: "Testing123!", confirmPassword: "Testing123!" }).expect(302);
   assert.equal(marketingConfigFrom(await agent.get("/")).consent, "granted");
-  assert.equal(marketingConfigFrom(await request(app).get("/")).consent, "unknown");
+  assert.equal(marketingConfigFrom(await request(app).get("/")).consent, "granted");
 });
 
 test("Session analytics validates Pixel IDs, supports disabling measurement, and prevents consent open redirects", async () => {
   const agent = request.agent(app), csrf = await consent(agent);
-  const response = await agent.post("/marketing/consent").send({ _csrf: csrf, choice: "granted",
-    returnTo: "//example.com" }).expect(303);
-  assert.equal(response.headers.location, "/");
   const { marketingConfig } = require("../services/marketing");
   try {
     process.env.META_PIXEL_ENABLED = "true";
@@ -522,7 +517,7 @@ test("Session analytics validates Pixel IDs, supports disabling measurement, and
     await agent.post("/marketing/events").set("x-csrf-token", csrf).send({ events: [
       { eventId: crypto.randomUUID(), type: "PageView", page: "catalog" },
     ] }).expect(403);
-    await agent.get("/marketing/dashboard").expect(404);
+    assert.equal(marketingConfigFrom(await agent.get("/")).enabled, false);
   } finally {
     process.env.META_PIXEL_ENABLED = "false";
     process.env.META_PIXEL_ID = "";
@@ -588,7 +583,7 @@ test("Session analytics purchase journey wires rendered browser events through t
   assert.equal(metrics.counts.ViewContent, 1);
   assert.equal(metrics.counts.InitiateCheckout, 1);
   assert.equal(metrics.ctr, 50);
-  await agent.get("/marketing/dashboard").expect(200);
+  await agent.get("/marketing/dashboard").expect(302);
 });
 
 test("SEO renders trusted canonicals, public product schema and descriptive alt text", async () => {
@@ -770,9 +765,9 @@ test("live mode blocks simulated card processing and renders normal store wordin
       phone: "9800000000", email: "buyer@example.com", address: "Street 1", city: "Kathmandu", paymentMethod: "card" });
     assert.equal(result.status, 302);
     assert.equal(await Order.countDocuments(), 1);
-    const dashboard = await agent.get("/marketing/dashboard").expect(200);
+    const dashboard = await agent.get("/marketing/dashboard").expect(403);
     assert.ok(!/Lab\s+\d|College|local demo|dummy card/i.test(home.text + dashboard.text));
-    assert.match(home.text, /Session analytics/);
+    assert.doesNotMatch(home.text, /Session analytics|Allow measurement/);
   } finally { process.env.PAYMENT_MODE = mode; }
 });
 
@@ -857,7 +852,7 @@ test("admin metrics aggregate all customers and separate sandbox payment value",
 async function shippingDraft() {
   const { agent, user } = await administrator(), part=await product(), order=await orderFor(user,part,"cod");
   const partner=await ShippingPartner.create({ name:"Courier", email:"courier@example.com", whatsapp:"+9779800000000", whatsappOptIn:true });
-  order.fulfillmentStatus="allocated"; order.shippingPartner=partner._id; await order.save();
+  order.fulfillmentStatus="allocated"; order.shippingPartner=partner._id; order.finalizedAt=new Date(); await order.save();
   const page=await agent.get("/admin/orders/"+order._id).expect(200);
   const preview=await agent.post("/admin/orders/"+order._id+"/notices/preview").type("form").send({ _csrf:token(page), channel:"email", recipient:"attacker@example.com" }).expect(302);
   const notice=await ShippingNotice.findOne();
@@ -929,4 +924,43 @@ test("admin mutations require CSRF and archived products cannot be added to the 
   await agent.post("/cart/add/"+part._id).type("form").send({ _csrf:token(page),quantity:"1" }).expect(302);
   const cart = await agent.get("/cart").expect(200);
   assert.doesNotMatch(cart.text, /Brake Pad/);
+});
+
+
+test("WhatsApp drafts open the partner chat with an encoded manifest and never call a provider", async () => {
+  const { agent, order, csrf } = await shippingDraft();
+  const preview = await agent.post("/admin/orders/" + order._id + "/notices/preview").send({ _csrf: csrf, channel: "whatsapp" }).expect(302);
+  const url = preview.headers.location;
+  const page = await agent.get(url).expect(200);
+  assert.match(page.text, /Open WhatsApp/);
+  assert.doesNotMatch(page.text, /Provider setup is required/);
+  const original = shippingDelivery.deliver;
+  shippingDelivery.deliver = async () => { throw Error("Provider must not be called"); };
+  try {
+    const response = await agent.post(url + "/send").send({ _csrf: csrf }).expect(303);
+    const target = new URL(response.headers.location);
+    assert.equal(target.origin, "https://wa.me");
+    assert.equal(target.pathname, "/9779800000000");
+    assert.match(target.searchParams.get("text"), /Customer: Buyer/);
+    assert.match(target.searchParams.get("text"), /Collect: NPR 350.00/);
+    const notice = await ShippingNotice.findOne({ channel: "whatsapp" });
+    assert.equal(notice.status, "opened");
+    assert.equal(notice.providerId, undefined);
+    await agent.post(url + "/send").send({ _csrf: csrf }).expect(409);
+  } finally { shippingDelivery.deliver = original; }
+});
+
+test("orders require finalization before notices and finalization checks stock and payment", async () => {
+  const { agent, user } = await administrator();
+  const order = await orderFor(user, await product(), "cod");
+  const partner = await ShippingPartner.create({ name: "Courier", email: "courier@example.com" });
+  const page = await agent.get("/admin/orders/" + order._id).expect(200), csrf = token(page);
+  await agent.post("/admin/orders/" + order._id + "/notices/preview").send({ _csrf: csrf, channel: "email" }).expect(409);
+  await assert.rejects(adminService.updateOrder(order._id, { version: order.updatedAt.toISOString(), action: "finalize", partner: String(partner._id) }, user._id), /reserve stock/);
+  order.fulfillmentStatus = "allocated"; await order.save();
+  await agent.post("/admin/orders/" + order._id).send({ _csrf: csrf, version: order.updatedAt.toISOString(), action: "finalize", partner: String(partner._id), status: "processing" }).expect(302);
+  const finalized = await Order.findById(order._id);
+  assert.ok(finalized.finalizedAt);
+  assert.equal(finalized.shippingStatus, "processing");
+  await agent.post("/admin/orders/" + order._id + "/notices/preview").send({ _csrf: csrf, channel: "email" }).expect(302);
 });

@@ -10,7 +10,7 @@ const schema = new mongoose.Schema({
   body: { type: String, required: true },
   orderVersion: { type: Date, required: true },
   partnerVersion: { type: Date, required: true },
-  status: { type: String, enum: ["draft", "sending", "accepted", "unconfirmed"], default: "draft" },
+  status: { type: String, enum: ["draft", "opened", "sending", "accepted", "unconfirmed"], default: "draft" },
   providerId: String,
   failure: String,
 }, { timestamps: true });

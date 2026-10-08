@@ -34,6 +34,10 @@ function purchaseData(req, order) {
 function exposeMarketing(req, res, next) {
   const config = marketingConfig();
   res.locals.marketing = config;
+  if (config.enabled) {
+    req.session.marketingVisitor ||= crypto.randomUUID();
+    req.session.marketingConsent = "granted";
+  } else req.session.marketingConsent = "denied";
   res.locals.marketingConsent = req.session.marketingConsent || "unknown";
   res.locals.marketingReturnTo = req.path;
   res.locals.marketingPage = null;
@@ -46,7 +50,7 @@ function exposeMarketing(req, res, next) {
 
 async function recordEvents(req, events) {
   if (!marketingConfig().enabled || req.session.marketingConsent !== "granted" || !req.session.marketingVisitor) {
-    throw httpError(403, "Allow marketing measurement before recording events.");
+    throw httpError(403, "Marketing measurement is disabled.");
   }
   if (!Array.isArray(events) || !events.length || events.length > 25) throw httpError(400, "Send between 1 and 25 events.");
   const visitor = req.session.marketingVisitor;
@@ -81,12 +85,11 @@ async function recordEvents(req, events) {
 
 async function dashboard(visitor) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  if (!visitor) return { counts: {}, impressions: 0, clicks: 0, conversions: 0, revenue: 0, recent: [], ctr: 0, conversionRate: 0 };
-  const filter = { visitor, createdAt: { $gte: since } };
+  const filter = { ...(visitor ? { visitor } : {}), createdAt: { $gte: since } };
   const [groups, events, orders] = await Promise.all([
     MarketingEvent.aggregate([{ $match: filter }, { $group: { _id: "$type", count: { $sum: 1 } } }]),
     MarketingEvent.find(filter).sort({ createdAt: -1 }).limit(40).lean(),
-    Order.find({ marketingVisitor: visitor, paymentStatus: "paid", paidAt: { $gte: since } })
+    Order.find({ marketingVisitor: visitor || { $exists: true, $ne: null }, paymentStatus: "paid", paidAt: { $gte: since } })
       .select("total paidAt paymentMethod").lean(),
   ]);
   const counts = Object.fromEntries(groups.map((group) => [group._id, group.count]));
